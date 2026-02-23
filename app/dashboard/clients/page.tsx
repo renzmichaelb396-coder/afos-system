@@ -121,6 +121,11 @@ export default function ClientsPage() {
   const [payAmount, setPayAmount] = useState<string>("");
   const [payDate, setPayDate] = useState<string>(todayISO());
 
+  // Undo toast
+  const [toast, setToast] = useState<{ message: string; undo: () => void } | null>(null);
+  const [toastKey, setToastKey] = useState(0);
+
+
 
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
@@ -197,8 +202,18 @@ export default function ClientsPage() {
 
   function removeClient(id: string) {
     setClients((prev) => {
+      const removed = prev.find((c) => c.id === id);
       const next = prev.filter((c) => c.id !== id);
       saveClients(next);
+      if (removed) {
+        showToast(`Removed ${removed.name}`, () => {
+          setClients((p2) => {
+            const restored = [removed, ...p2];
+            saveClients(restored);
+            return restored;
+          });
+        });
+      }
       return next;
     });
   }
@@ -210,6 +225,15 @@ export default function ClientsPage() {
         if (c.status === "PAID") return c; // already paid
         const paidClient = { ...c, status: "PAID" as const };
         appendPayment(paidClient);
+        setTimeout(() => {
+          showToast(`Recorded payment for `, () => {
+            setClients((p2) => {
+              const reverted = p2.map((x) => (x.id === paidClient.id ? { ...x, status: "UNPAID" as const } : x));
+              saveClients(reverted);
+              return reverted;
+            });
+          });
+        }, 0);
         return paidClient;
       });
       saveClients(next);
@@ -257,6 +281,17 @@ export default function ClientsPage() {
     setPayOpen(false);
     setPayClientId(null);
   }
+
+  function showToast(message: string, undo: () => void) {
+    setToastKey((k) => k + 1);
+    setToast({ message, undo });
+    const myKey = toastKey + 1;
+    setTimeout(() => {
+      // only clear if no newer toast replaced it
+      setToast((t) => (t && myKey === toastKey + 1 ? null : t));
+    }, 6000);
+  }
+
 
 
   async function copyAllReminders() {
