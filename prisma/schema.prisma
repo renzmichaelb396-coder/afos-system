@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  monthlyFee Int
+  status     String   @default("UNPAID") // "PAID" or "UNPAID"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  payments   Payment[]
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  amount    Int
+  paidAt    DateTime @default(now())
+}

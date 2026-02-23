@@ -24,3 +24,79 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ===== AFOS UI primitives (semantic classes) ===== */
+@layer components {
+  .stack { @apply mx-auto max-w-5xl p-6 space-y-4; }
+
+  .card { @apply rounded-2xl border border-black/10 bg-white shadow-sm; }
+  @media (prefers-color-scheme: dark) {
+    .card { @apply border-white/10 bg-neutral-950; }
+  }
+  .card-pad { @apply p-5; }
+
+  .row { @apply flex items-center justify-between gap-4; }
+
+  .h1 { @apply text-2xl font-semibold tracking-tight; }
+  .h2 { @apply text-lg font-semibold; }
+  .sub { @apply mt-1 text-sm text-black/60; }
+  @media (prefers-color-scheme: dark) {
+    .sub { @apply text-white/60; }
+  }
+
+  .grid-3 { @apply grid gap-3 sm:grid-cols-3; }
+
+  .kpi-label { @apply text-xs uppercase tracking-wide text-black/60; }
+  .kpi-value { @apply mt-1 text-xl font-semibold; }
+  @media (prefers-color-scheme: dark) {
+    .kpi-label { @apply text-white/60; }
+  }
+
+  .list { @apply divide-y divide-black/10; }
+  @media (prefers-color-scheme: dark) {
+    .list { @apply divide-white/10; }
+  }
+
+  .item { @apply flex items-center justify-between gap-4 py-4; }
+  .item-title { @apply font-medium; }
+  .item-sub { @apply text-sm text-black/60; }
+  @media (prefers-color-scheme: dark) {
+    .item-sub { @apply text-white/60; }
+  }
+
+  .pill { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold; }
+  .pill-paid { @apply bg-emerald-500/15 text-emerald-700; }
+  .pill-unpaid { @apply bg-amber-500/15 text-amber-800; }
+  @media (prefers-color-scheme: dark) {
+    .pill-paid { @apply text-emerald-300; }
+    .pill-unpaid { @apply text-amber-300; }
+  }
+
+  .btn { @apply inline-flex items-center justify-center rounded-xl border border-black/10 px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-black/5 active:translate-y-px; }
+  @media (prefers-color-scheme: dark) {
+    .btn { @apply border-white/10 hover:bg-white/5; }
+  }
+
+  .btn-primary { @apply border-transparent bg-black text-white hover:bg-black/90; }
+  @media (prefers-color-scheme: dark) {
+    .btn-primary { @apply bg-white text-black hover:bg-white/90; }
+  }
+
+  .btn-danger { @apply border-transparent bg-red-600 text-white hover:bg-red-600/90; }
+
+  .input { @apply h-10 w-full rounded-xl border border-black/10 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-black/20; }
+  .select { @apply h-10 rounded-xl border border-black/10 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-black/20; }
+  @media (prefers-color-scheme: dark) {
+    .input, .select { @apply border-white/10 bg-neutral-950 focus:ring-white/20; }
+  }
+
+  .pre { @apply mt-2 whitespace-pre-wrap rounded-xl border border-black/10 bg-black/5 p-3 text-sm; }
+  @media (prefers-color-scheme: dark) {
+    .pre { @apply border-white/10 bg-white/5; }
+  }
+
+  .footer-note { @apply mt-3 text-xs text-black/55; }
+  @media (prefers-color-scheme: dark) {
+    .footer-note { @apply text-white/55; }
+  }
+}

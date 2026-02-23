@@ -1,3 +1,4 @@
+cat <<'EOF' > app/dashboard/clients/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -406,3 +407,5 @@ export default function ClientsPage() {
     </div>
   );
 }
+EOF
+

@@ -1,0 +1,312 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+
+type Client = {
+  id: string;
+  name: string;
+  email?: string;
+  monthlyFee: number;
+  status: "PAID" | "UNPAID";
+};
+
+type Payment = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  amount: number;
+  date: string; // YYYY-MM-DD
+};
+
+const CLIENTS_KEY = "afos_clients_v1";
+const PAYMENTS_KEY = "afos_payments_v1";
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadClients(defaultClients: Client[]) {
+  try {
+    const raw = localStorage.getItem(CLIENTS_KEY);
+    if (!raw) return defaultClients;
+    const parsed = JSON.parse(raw) as Client[];
+    return Array.isArray(parsed) ? parsed : defaultClients;
+  } catch {
+    return defaultClients;
+  }
+}
+
+function saveClients(clients: Client[]) {
+  try {
+    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
+  } catch {
+    // ignore
+  }
+}
+
+function appendPayment(c: Client) {
+  const p: Payment = {
+    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    clientId: c.id,
+    clientName: c.name,
+    amount: c.monthlyFee,
+    date: todayISO(),
+  };
+
+  try {
+    const raw = localStorage.getItem(PAYMENTS_KEY);
+    const arr = raw ? (JSON.parse(raw) as Payment[]) : [];
+    const safeArr = Array.isArray(arr) ? arr : [];
+    localStorage.setItem(PAYMENTS_KEY, JSON.stringify([p, ...safeArr]));
+  } catch {
+    localStorage.setItem(PAYMENTS_KEY, JSON.stringify([p]));
+  }
+
+  window.dispatchEvent(new Event("afos_payments_updated"));
+}
+
+function buildReminderMessage(c: Client) {
+  const d = todayISO();
+  return `Hi ${c.name},\n\nJust a quick reminder that your monthly payment of ₱ ${Number(
+    c.monthlyFee
+  ).toLocaleString()} is still marked as UNPAID as of ${d}.\n\nIf you’ve already paid, please ignore this message and let us know so we can update our records.\n\nThank you!`;
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Copied!");
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      alert("Copied!");
+    } catch {
+      alert("Copy failed.");
+    }
+  }
+}
+
+export default function ClientsPage() {
+  const defaultClients: Client[] = [
+    { id: "a", name: "Client A", email: "", monthlyFee: 5000, status: "UNPAID" },
+    { id: "b", name: "Client B", email: "", monthlyFee: 8000, status: "PAID" },
+    { id: "c", name: "Client C", email: "", monthlyFee: 6500, status: "UNPAID" },
+  ];
+
+  const [clients, setClients] = useState<Client[]>([]);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [fee, setFee] = useState("");
+
+  useEffect(() => {
+    const loaded = loadClients(defaultClients);
+    const normalized = loaded.map((c) => ({ ...c, email: c.email ?? "" }));
+    setClients(normalized);
+    saveClients(normalized);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (clients.length > 0) saveClients(clients);
+  }, [clients]);
+
+  const totals = useMemo(() => {
+    const total = clients.reduce((s, c) => s + (Number(c.monthlyFee) || 0), 0);
+    const paid = clients.filter((c) => c.status === "PAID").reduce((s, c) => s + (Number(c.monthlyFee) || 0), 0);
+    const unpaid = total - paid;
+    return { total, paid, unpaid };
+  }, [clients]);
+
+  const unpaidClients = useMemo(() => clients.filter((c) => c.status === "UNPAID"), [clients]);
+
+  function toggleClient(id: string) {
+    setClients((prev) => {
+      const next = prev.map((c) => {
+        if (c.id !== id) return c;
+        const newStatus: Client["status"] = c.status === "PAID" ? "UNPAID" : "PAID";
+        if (newStatus === "PAID") appendPayment({ ...c, status: "PAID" });
+        return { ...c, status: newStatus };
+      });
+      saveClients(next);
+      return next;
+    });
+  }
+
+  function removeClient(id: string) {
+    setClients((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      saveClients(next);
+      return next;
+    });
+  }
+
+  function addClient() {
+    const monthlyFee = Number(fee);
+    if (!name.trim()) return alert("Enter client name.");
+    if (!Number.isFinite(monthlyFee) || monthlyFee <= 0) return alert("Enter valid fee.");
+
+    const c: Client = { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, name: name.trim(), email: email.trim(), monthlyFee, status: "UNPAID" };
+
+    setClients((prev) => {
+      const next = [c, ...prev];
+      saveClients(next);
+      return next;
+    });
+
+    setName("");
+    setEmail("");
+    setFee("");
+  }
+
+  function updateEmail(id: string, nextEmail: string) {
+    setClients((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, email: nextEmail } : c));
+      saveClients(next);
+      return next;
+    });
+  }
+
+  function mailtoLink(c: Client) {
+    const subject = encodeURIComponent("Payment reminder");
+    const body = encodeURIComponent(buildReminderMessage(c));
+    const to = encodeURIComponent((c.email || "").trim());
+    return `mailto:${to}?subject=${subject}&body=${body}`;
+  }
+
+  async function copyAllReminders() {
+    if (unpaidClients.length === 0) return alert("No unpaid clients.");
+    const text = unpaidClients.map((c) => `--- ${c.name} ---\n${buildReminderMessage(c)}\n`).join("\n");
+    await copyText(text);
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Clients</h1>
+          <div style={{ opacity: 0.7, marginTop: 6 }}>Click status to toggle. When it becomes PAID, it auto-records a payment.</div>
+        </div>
+        <Link href="/dashboard" style={{ textDecoration: "none" }}>
+          <span style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd" }}>Back</span>
+        </Link>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 18 }}>
+        <div style={{ padding: 14, border: "1px solid #eee", borderRadius: 12 }}>
+          <div style={{ opacity: 0.7, fontSize: 13 }}>Total</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>₱ {totals.total.toLocaleString()}</div>
+        </div>
+        <div style={{ padding: 14, border: "1px solid #eee", borderRadius: 12 }}>
+          <div style={{ opacity: 0.7, fontSize: 13 }}>Paid</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>₱ {totals.paid.toLocaleString()}</div>
+        </div>
+        <div style={{ padding: 14, border: "1px solid #eee", borderRadius: 12 }}>
+          <div style={{ opacity: 0.7, fontSize: 13 }}>Unpaid</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>₱ {totals.unpaid.toLocaleString()}</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 18, padding: 16, border: "1px solid #eee", borderRadius: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0, marginBottom: 12 }}>Add client</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 180px 140px", gap: 10 }}>
+          <input placeholder="Client name" value={name} onChange={(e) => setName(e.target.value)} style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }} />
+          <input placeholder="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }} />
+          <input placeholder="Monthly fee" inputMode="numeric" value={fee} onChange={(e) => setFee(e.target.value)} style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }} />
+          <button type="button" onClick={addClient} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}>
+            Add
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 18, padding: 16, border: "1px solid #eee", borderRadius: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <h2 style={{ fontSize: 18, margin: 0 }}>Reminders (UNPAID only)</h2>
+          <button type="button" onClick={copyAllReminders} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}>
+            Copy all reminders
+          </button>
+        </div>
+
+        {unpaidClients.length === 0 ? (
+          <div style={{ marginTop: 10, opacity: 0.7 }}>No unpaid clients 🎉</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            {unpaidClients.map((c) => (
+              <div key={c.id} style={{ padding: 12, border: "1px solid #eee", borderRadius: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontWeight: 800 }}>{c.name}</div>
+                  <div style={{ fontWeight: 800 }}>₱ {Number(c.monthlyFee).toLocaleString()}</div>
+                </div>
+
+                <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    placeholder="Email (optional)"
+                    value={c.email || ""}
+                    onChange={(e) => updateEmail(c.id, e.target.value)}
+                    style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd", minWidth: 260 }}
+                  />
+
+                  <button type="button" onClick={() => copyText(buildReminderMessage(c))} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}>
+                    Copy reminder
+                  </button>
+
+                  <a
+                    href={c.email?.trim() ? mailtoLink(c) : undefined}
+                    onClick={(e) => {
+                      if (!c.email?.trim()) {
+                        e.preventDefault();
+                        alert("Add an email first. Or use Copy reminder.");
+                      }
+                    }}
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", textDecoration: "none", display: "inline-block" }}
+                  >
+                    Email reminder
+                  </a>
+                </div>
+
+                <pre style={{ marginTop: 10, whiteSpace: "pre-wrap", background: "#fafafa", border: "1px solid #eee", borderRadius: 12, padding: 12, fontSize: 13, lineHeight: 1.4 }}>
+                  {buildReminderMessage(c)}
+                </pre>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 18, padding: 16, border: "1px solid #eee", borderRadius: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0, marginBottom: 12 }}>Client list</h2>
+
+        {clients.length === 0 ? (
+          <div style={{ opacity: 0.7 }}>No clients yet.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {clients.map((c) => (
+              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12, border: "1px solid #eee", borderRadius: 12, gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800 }}>{c.name}</div>
+                  <div style={{ opacity: 0.7, fontSize: 13 }}>
+                    ₱ {c.monthlyFee.toLocaleString()} / month {c.email?.trim() ? `• ${c.email}` : ""}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button type="button" onClick={() => toggleClient(c.id)} style={{ padding: "8px 10px", borderRadius: 999, border: "1px solid #ddd", background: "#fff", fontWeight: 800 }}>
+                    {c.status}
+                  </button>
+                  <button type="button" onClick={() => removeClient(c.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
