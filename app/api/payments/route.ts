@@ -1,23 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-export async function GET() {
-  try {
-    const payments = await prisma.payment.findMany({
-      orderBy: { paidAt: "desc" },
-      include: {
-        client: {
-          select: { name: true },
-        },
-      },
-    });
-
-    return NextResponse.json(payments);
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Failed to fetch payments" }, { status: 500 });
-  }
-}
+import { getOrCreateCurrentPeriod } from "@/lib/billing/getCurrentPeriod";
 
 export async function POST(req: Request) {
   try {
@@ -28,12 +11,30 @@ export async function POST(req: Request) {
     if (!clientId || typeof clientId !== "string") {
       return NextResponse.json({ error: "Missing or invalid clientId" }, { status: 400 });
     }
-    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+
+    if (typeof amount !== "number" || amount <= 0) {
       return NextResponse.json({ error: "Missing or invalid amount" }, { status: 400 });
     }
 
+    const period = await getOrCreateCurrentPeriod();
+
     const payment = await prisma.payment.create({
       data: { clientId, amount: Math.round(amount) },
+    });
+
+    await prisma.clientStatusByMonth.upsert({
+      where: {
+        clientId_billingPeriodId: {
+          clientId,
+          billingPeriodId: period.id,
+        },
+      },
+      update: { status: "PAID" },
+      create: {
+        clientId,
+        billingPeriodId: period.id,
+        status: "PAID",
+      },
     });
 
     await prisma.auditLog.create({
@@ -57,8 +58,8 @@ export async function DELETE(req: Request) {
     const body = await req.json();
     const paymentId = body?.paymentId;
 
-    if (!paymentId || typeof paymentId !== "string") {
-      return NextResponse.json({ error: "Missing or invalid paymentId" }, { status: 400 });
+    if (!paymentId) {
+      return NextResponse.json({ error: "Missing paymentId" }, { status: 400 });
     }
 
     const existing = await prisma.payment.findUnique({

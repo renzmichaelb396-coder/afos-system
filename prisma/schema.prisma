@@ -15,7 +15,8 @@ model Client {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  payments   Payment[]
+  payments        Payment[]
+  monthlyStatuses ClientStatusByMonth[]
 }
 
 model Payment {
@@ -24,6 +25,29 @@ model Payment {
   client    Client   @relation(fields: [clientId], references: [id])
   amount    Int
   paidAt    DateTime @default(now())
+}
+
+model BillingPeriod {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int
+  createdAt DateTime @default(now())
+
+  clientStatuses ClientStatusByMonth[]
+
+  @@unique([year, month])
+}
+
+model ClientStatusByMonth {
+  id              String   @id @default(cuid())
+  clientId        String
+  billingPeriodId String
+  status          String   @default("UNPAID")
+
+  client        Client        @relation(fields: [clientId], references: [id])
+  billingPeriod BillingPeriod @relation(fields: [billingPeriodId], references: [id])
+
+  @@unique([clientId, billingPeriodId])
 }
 
 model AuditLog {
