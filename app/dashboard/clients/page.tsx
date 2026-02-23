@@ -164,6 +164,13 @@ export default function ClientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  useEffect(() => {
+    const refresh = () => setPayments(loadPayments());
+    window.addEventListener("afos_payments_updated", refresh);
+    return () => window.removeEventListener("afos_payments_updated", refresh);
+  }, []);
+
   useEffect(() => {
     if (clients.length > 0) saveClients(clients);
   }, [clients]);
