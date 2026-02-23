@@ -449,6 +449,10 @@ export default function ClientsPage() {
                         Record payment
                       </button>
 
+                      <button className="btn" type="button" onClick={() => markUnpaid(c.id)} disabled={!isPaid} style={{ opacity: !isPaid ? 0.55 : 1 }}>
+                        Mark UNPAID
+                      </button>
+
                       <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                         <button className="btn" type="button" onClick={() => setMenuOpenId((v) => (v === c.id ? null : c.id))}>
                           ⋯ More
@@ -470,10 +474,6 @@ export default function ClientsPage() {
                           </div>
                         )}
                       </div>
-
-                      <button className="btn" type="button" onClick={() => removeClient(c.id)}>
-                        Remove
-                      </button>
                     </div>
                   </div>
                 );
