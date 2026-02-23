@@ -52,6 +52,26 @@ function saveClients(clients: Client[]) {
   }
 }
 
+function loadPayments(): Payment[] {
+  try {
+    const raw = localStorage.getItem(PAYMENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Payment[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function lastPaidMap(payments: Payment[]) {
+  const m = new Map<string, string>();
+  for (const p of payments) {
+    if (!m.has(p.clientId)) m.set(p.clientId, p.date);
+  }
+  return m;
+}
+
+
 function appendPayment(c: Client) {
   const p: Payment = {
     id: genId(),
@@ -111,6 +131,7 @@ export default function ClientsPage() {
   ];
 
   const [clients, setClients] = useState<Client[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [fee, setFee] = useState("");
@@ -138,6 +159,7 @@ export default function ClientsPage() {
   useEffect(() => {
     const loaded = loadClients(defaultClients).map((c) => ({ ...c, email: c.email ?? "" }));
     setClients(loaded);
+    setPayments(loadPayments());
     saveClients(loaded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -147,6 +169,9 @@ export default function ClientsPage() {
   }, [clients]);
 
   const totals = useMemo(() => {
+
+  const lastPaid = useMemo(() => lastPaidMap(payments), [payments]);
+
     const total = clients.reduce((s, c) => s + (Number(c.monthlyFee) || 0), 0);
     const paid = clients.filter((c) => c.status === "PAID").reduce((s, c) => s + (Number(c.monthlyFee) || 0), 0);
     const unpaid = total - paid;
