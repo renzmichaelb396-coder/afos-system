@@ -177,6 +177,9 @@ export default function ClientsPage() {
     return { total, paid, unpaid };
   }, [clients]);
 
+  const lastPaid = useMemo(() => lastPaidMap(payments), [payments]);
+
+
   const filteredClients = useMemo(() => {
     const query = q.trim().toLowerCase();
 
