@@ -125,6 +125,10 @@ export default function ClientsPage() {
   const [toast, setToast] = useState<{ message: string; undo: () => void } | null>(null);
   const [toastKey, setToastKey] = useState(0);
 
+  // Per-row overflow menu
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
+
 
 
   const [q, setQ] = useState("");
@@ -445,9 +449,27 @@ export default function ClientsPage() {
                         Record payment
                       </button>
 
-                      <button className="btn" type="button" onClick={() => markUnpaid(c.id)} disabled={!isPaid} style={{ opacity: !isPaid ? 0.55 : 1 }}>
-                        Mark UNPAID
-                      </button>
+                      <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+                        <button className="btn" type="button" onClick={() => setMenuOpenId((v) => (v === c.id ? null : c.id))}>
+                          ⋯ More
+                        </button>
+
+                        {menuOpenId === c.id && (
+                          <div className="card" style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", minWidth: 220, padding: 8, zIndex: 20 }}>
+                            <button
+                              className="btn"
+                              type="button"
+                              style={{ width: "100%", justifyContent: "flex-start" }}
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                if (confirm("Are you sure you want to remove this client? This cannot be undone.")) removeClient(c.id);
+                              }}
+                            >
+                              Remove client
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
                       <button className="btn" type="button" onClick={() => removeClient(c.id)}>
                         Remove
