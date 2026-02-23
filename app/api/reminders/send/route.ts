@@ -49,8 +49,8 @@ export async function POST(req: Request) {
   }
 
   // env gate (db)
-  if (!process.env.PG_DATABASE_URL) {
-    return NextResponse.json({ error: "Reminders not configured (missing PG_DATABASE_URL)" }, { status: 501 });
+  if (!(process.env.DATABASE_URL || process.env.PG_DATABASE_URL)) {
+    return NextResponse.json({ error: "Reminders not configured (missing DATABASE_URL)" }, { status: 501 });
   }
 
   // period selection (explicit via query or defaults to current)
