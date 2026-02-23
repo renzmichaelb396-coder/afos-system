@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateCurrentPeriod } from "@/lib/billing/getCurrentPeriod";
 
 async function getOrCreatePeriod(year: number, month: number) {
   let period = await prisma.billingPeriod.findUnique({
@@ -51,6 +50,10 @@ export async function POST(req: Request) {
     const clientId = body?.clientId;
     const amount = body?.amount;
 
+    const now = new Date();
+    const year = Number(body?.year ?? now.getFullYear());
+    const month = Number(body?.month ?? now.getMonth() + 1);
+
     if (!clientId || typeof clientId !== "string") {
       return NextResponse.json({ error: "Missing or invalid clientId" }, { status: 400 });
     }
@@ -59,10 +62,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing or invalid amount" }, { status: 400 });
     }
 
-    const period = await getOrCreateCurrentPeriod();
+    if (!Number.isInteger(year) || year < 2000 || year > 3000) {
+      return NextResponse.json({ error: "Invalid year" }, { status: 400 });
+    }
+
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return NextResponse.json({ error: "Invalid month" }, { status: 400 });
+    }
+
+    const period = await getOrCreatePeriod(year, month);
+
+    const paidAt = new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        now.getUTCSeconds()
+      )
+    );
 
     const payment = await prisma.payment.create({
-      data: { clientId, amount: Math.round(amount) },
+      data: { clientId, amount: Math.round(amount), paidAt },
     });
 
     await prisma.clientStatusByMonth.upsert({
@@ -85,7 +107,7 @@ export async function POST(req: Request) {
         entityType: "Payment",
         entityId: payment.id,
         action: "CREATE",
-        meta: { clientId, amount },
+        meta: { clientId, amount, year, month },
       },
     });
 
@@ -101,8 +123,8 @@ export async function DELETE(req: Request) {
     const body = await req.json();
     const paymentId = body?.paymentId;
 
-    if (!paymentId) {
-      return NextResponse.json({ error: "Missing paymentId" }, { status: 400 });
+    if (!paymentId || typeof paymentId !== "string") {
+      return NextResponse.json({ error: "Missing or invalid paymentId" }, { status: 400 });
     }
 
     const existing = await prisma.payment.findUnique({
@@ -113,16 +135,50 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
+    const paidAt = new Date(existing.paidAt);
+    const year = paidAt.getUTCFullYear();
+    const month = paidAt.getUTCMonth() + 1;
+
+    const period = await getOrCreatePeriod(year, month);
+
     await prisma.payment.delete({
       where: { id: paymentId },
     });
+
+    // If no remaining payments for this client in that month, revert status
+    const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+    const end = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+
+    const remaining = await prisma.payment.count({
+      where: {
+        clientId: existing.clientId,
+        paidAt: { gte: start, lt: end },
+      },
+    });
+
+    if (remaining === 0) {
+      await prisma.clientStatusByMonth.upsert({
+        where: {
+          clientId_billingPeriodId: {
+            clientId: existing.clientId,
+            billingPeriodId: period.id,
+          },
+        },
+        update: { status: "UNPAID" },
+        create: {
+          clientId: existing.clientId,
+          billingPeriodId: period.id,
+          status: "UNPAID",
+        },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
         entityType: "Payment",
         entityId: paymentId,
         action: "DELETE",
-        meta: { clientId: existing.clientId, amount: existing.amount },
+        meta: { clientId: existing.clientId, amount: existing.amount, year, month, remaining },
       },
     });
 
