@@ -437,11 +437,9 @@ export default function ClientsPage() {
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <div className="item-sub">
-                        ₱ {Number(c.monthlyFee).toLocaleString()} / month
-                        {c.email?.trim() ? ` • ${c.email}` : ""}
-                        {c.status === "PAID" && lastPaid.get(c.id) ? ` • Last paid: ${lastPaid.get(c.id)}` : ""}
-                      </div>
+            <input className="input" placeholder="Search name/email…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 260 }} />
+            <select className="select" value={filter} onChange={(e) => setFilter(e.target.value as any)} style={{ width: 160 }}>
+              <option value="ALL">All</option>
               <option value="PAID">Paid</option>
               <option value="UNPAID">Unpaid</option>
             </select>
