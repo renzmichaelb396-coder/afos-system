@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type ClientRow = {
@@ -12,16 +12,40 @@ type ClientRow = {
   status: "PAID" | "UNPAID";
 };
 
+type ClientsResponse = {
+  year: number;
+  month: number;
+  clients: ClientRow[];
+};
+
+function monthLabel(m: number) {
+  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return names[m - 1] ?? `M${m}`;
+}
+
 export default function ClientsPage() {
+  const now = new Date();
+  const [year, setYear] = useState<number>(now.getFullYear());
+  const [month, setMonth] = useState<number>(now.getMonth() + 1);
+
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [name, setName] = useState("");
   const [monthlyFee, setMonthlyFee] = useState("");
   const [loading, setLoading] = useState(true);
 
-  async function loadClients() {
-    const res = await fetch("/api/clients");
-    const data = await res.json();
-    setClients(Array.isArray(data) ? data : []);
+  const years = useMemo(() => {
+    const y = now.getFullYear();
+    return [y - 1, y, y + 1];
+  }, [now]);
+
+  async function loadClients(y: number, m: number) {
+    setLoading(true);
+    const res = await fetch(`/api/clients?year=${y}&month=${m}`);
+    const data = (await res.json()) as ClientsResponse;
+
+    setYear(Number(data?.year ?? y));
+    setMonth(Number(data?.month ?? m));
+    setClients(Array.isArray(data?.clients) ? data.clients : []);
     setLoading(false);
   }
 
@@ -39,7 +63,7 @@ export default function ClientsPage() {
 
     setName("");
     setMonthlyFee("");
-    loadClients();
+    loadClients(year, month);
   }
 
   async function recordPayment(clientId: string, amount: number, clientName: string) {
@@ -52,22 +76,66 @@ export default function ClientsPage() {
       body: JSON.stringify({ clientId, amount }),
     });
 
-    loadClients();
+    loadClients(year, month);
   }
 
   useEffect(() => {
-    loadClients();
+    loadClients(year, month);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
 
   return (
     <main style={{ padding: 40 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontSize: 32 }}>Clients</h1>
-        <Link href="/dashboard" style={{ textDecoration: "none" }}>
-          <span style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd" }}>Back</span>
-        </Link>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 32, margin: 0 }}>Clients</h1>
+          <div style={{ opacity: 0.7, marginTop: 6 }}>
+            Viewing: {monthLabel(month)} {year}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <select
+            value={year}
+            onChange={(e) => {
+              const y = Number(e.target.value);
+              setYear(y);
+              loadClients(y, month);
+            }}
+            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={month}
+            onChange={(e) => {
+              const m = Number(e.target.value);
+              setMonth(m);
+              loadClients(year, m);
+            }}
+            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}
+          >
+            {Array.from({ length: 12 }).map((_, i) => {
+              const m = i + 1;
+              return (
+                <option key={m} value={m}>
+                  {monthLabel(m)}
+                </option>
+              );
+            })}
+          </select>
+
+          <Link href="/dashboard" style={{ textDecoration: "none" }}>
+            <span style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd" }}>Back</span>
+          </Link>
+        </div>
       </div>
 
       <form onSubmit={createClient} style={{ marginTop: 20 }}>
