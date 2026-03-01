@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/require-user";
 import { prisma } from "@/lib/prisma";
 
 function logEvent(data: Record<string, unknown>) {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), ...data }));
+  if (process.env.LOG_EVENTS === "1") console.log(JSON.stringify({ ts: new Date().toISOString(), ...data }));
 }
 
 async function getOrCreatePeriod(year: number, month: number) {
