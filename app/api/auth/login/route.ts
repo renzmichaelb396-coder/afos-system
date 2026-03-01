@@ -28,6 +28,10 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({ ok: true });
 
+    // Explicit Set-Cookie header for curl + browsers (most reliable)
+    res.headers.append("Set-Cookie", `afos_session=${user.id}; Path=/; HttpOnly; SameSite=Lax`);
+
+    // Also set via NextResponse cookies API (browser-friendly)
     res.cookies.set("afos_session", user.id, {
       httpOnly: true,
       sameSite: "lax",
