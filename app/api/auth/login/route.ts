@@ -3,7 +3,6 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
   try {
@@ -29,15 +28,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const cookieStore = await cookies();
+    const res = NextResponse.json({ ok: true });
 
-    cookieStore.set("afos_session", user.id, {
+    res.cookies.set("afos_session", user.id, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
     });
 
-    return NextResponse.json({ ok: true });
+    return res;
   } catch (err: unknown) {
     console.error(err);
 
