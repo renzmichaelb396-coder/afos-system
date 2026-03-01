@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { describe, it, expect } from "vitest";
 
+
+
 const BASE = process.env.AFOS_BASE_URL ?? "http://127.0.0.1:3000";
 const EMAIL = process.env.SEED_ADMIN_EMAIL ?? "stella.trusova@gmail.com";
 const PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "stella.trusova@gmail.com";
@@ -14,7 +16,7 @@ function extractCookie(setCookie: string | null): string {
   return setCookie.split(";")[0]; // "afos_session=..."
 }
 
-async function postJson(path: string, body: any, cookie?: string) {
+async function postJson(path: string, body: unknown, cookie?: string) {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: {
@@ -25,7 +27,7 @@ async function postJson(path: string, body: any, cookie?: string) {
   });
 
   const text = await res.text();
-  let json: any = null;
+  let json: unknown = null;
   try {
     json = JSON.parse(text);
   } catch {}
@@ -38,7 +40,7 @@ async function getJson(path: string, cookie?: string) {
   });
 
   const text = await res.text();
-  let json: any = null;
+  let json: unknown = null;
   try {
     json = JSON.parse(text);
   } catch {}

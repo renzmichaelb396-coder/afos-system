@@ -3,7 +3,7 @@ import { prisma } from "../../lib/prisma";
 
 const BASE = process.env.AFOS_BASE_URL ?? "http://127.0.0.1:3000";
 
-async function postJson(path: string, body: any) {
+async function postJson(path: string, body: unknown) {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -11,7 +11,7 @@ async function postJson(path: string, body: any) {
   });
 
   const text = await res.text();
-  let json: any = null;
+  let json: unknown = null;
   try {
     json = JSON.parse(text);
   } catch {}
