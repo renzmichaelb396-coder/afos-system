@@ -54,7 +54,7 @@
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
-    "seed": "node -r dotenv/config scripts/make-admin.mjs"
+    "seed": "node scripts/seed-test-fixtures.mjs"
   },
   "dev": "NEXT_DISABLE_TURBOPACK=1 next dev -p 3000"
 }
