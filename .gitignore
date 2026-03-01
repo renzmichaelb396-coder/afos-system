@@ -47,3 +47,5 @@ scripts/
 .env*.local
 cookies.txt
 dev.log
+
+!scripts/make-admin.mjs
