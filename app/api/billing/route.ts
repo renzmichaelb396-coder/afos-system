@@ -24,15 +24,16 @@ async function getOrCreatePeriod(year: number, month: number) {
 }
 
 export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const year = Number(searchParams.get("year"));
+  const month = Number(searchParams.get("month"));
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return Response.json({ error: "Bad request" }, { status: 400 });
+  }
   try {
     const auth = await requireUser();
     if (auth.error) return auth.error;
     const user = auth.user;
-        const body = await req.json();
-    const now = new Date();
-    const year = Number(body?.year ?? now.getFullYear());
-    const month = Number(body?.month ?? now.getMonth() + 1);
-
     if (!Number.isInteger(year) || year < 2000 || year > 3000) {
       return NextResponse.json({ error: "Invalid year" }, { status: 400 });
     }
@@ -42,31 +43,7 @@ export async function GET(req: Request) {
 
     const period = await getOrCreatePeriod(year, month);
 
-    if (period.isClosed) {
-      return NextResponse.json({ error: "Billing period already closed" }, { status: 409 });
-    }
-
-    const closed = await prisma.billingPeriod.update({
-      where: { id: period.id },
-      data: {
-        isClosed: true,
-        closedAt: new Date(),
-        closedById: user.id,
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        entityType: "BillingPeriod",
-        entityId: closed.id,
-        action: "CLOSE",
-        meta: { year, month },
-      },
-    });
-
-    logEvent({ event: "BILLING_CLOSE", route: "/api/billing", result: "ok", year, month, periodId: closed.id });
-    return NextResponse.json({ ok: true, periodId: closed.id, year, month, isClosed: true });
+      return NextResponse.json({ ok: true, periodId: period.id, year, month, isClosed: period.isClosed });
   } catch (err: any) {
     logEvent({ event: "BILLING_CLOSE", route: "/api/billing", result: "err", message: String(err?.message || err) });
     const msg = String(err?.message || err);

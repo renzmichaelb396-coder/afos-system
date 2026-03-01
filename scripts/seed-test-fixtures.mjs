@@ -1,13 +1,11 @@
-import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 const YEAR = 2026;
-const CLOSED_MONTH = 3;
-const OPEN_MONTH = 4;
-
+const CLOSED_MONTH = 1;
+const OPEN_MONTH = 2;
 console.log("DATABASE_URL_PRESENT:", !!process.env.DATABASE_URL);
 const email = process.env.SEED_ADMIN_EMAIL || "stella.trusova@gmail.com";
 console.log("SEED_ADMIN_EMAIL:", email);
@@ -21,17 +19,12 @@ await prisma.user.upsert({
   create: { email, password: hash, role: "ADMIN" },
 });
 
-// 2) Ensure at least one client exists
-const existingClient = await prisma.client.findFirst();
-if (!existingClient) {
-  await prisma.client.create({
-    data: {
-      name: "Test Client",
-      email: "test-client@example.com",
-      monthlyFee: 1000,
-    },
+// 2) Ensure deterministic client exists (id = "1")
+  await prisma.client.upsert({
+    where: { id: "1" },
+    update: { name: "Test Client", email: "test-client@example.com", monthlyFee: 1000 },
+    create: { id: "1", name: "Test Client", email: "test-client@example.com", monthlyFee: 1000 },
   });
-}
 
 // 3) Ensure closed + open billing periods exist in expected states
 await prisma.billingPeriod.upsert({

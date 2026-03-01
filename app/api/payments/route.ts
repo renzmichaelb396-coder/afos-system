@@ -2,9 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/require-user";
-import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireOpenPeriod } from "@/lib/guards/requireOpenPeriod";
 
 function logEvent(data: Record<string, unknown>) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), ...data }));
@@ -16,9 +14,7 @@ async function getOrCreatePeriod(year: number, month: number) {
   });
 
   if (!period) {
-    period = await prisma.billingPeriod.create({
-      data: { year, month },
-    });
+    period = await prisma.billingPeriod.create({ data: { year, month } });
   }
 
   return period;
@@ -35,11 +31,81 @@ async function assertPeriodOpen(periodId: string) {
   return period;
 }
 
+// CREATE payment (used by integration tests)
+export async function POST(req: Request) {
+  try {
+    const auth = await requireUser();
+    if (auth.error) return auth.error;
+
+    const body = await req.json();
+
+    const clientIdRaw = body?.clientId;
+    const clientId = clientIdRaw === null || clientIdRaw === undefined ? "" : String(clientIdRaw);
+
+    const amountRaw = body?.amount;
+    const amount = typeof amountRaw === "string" ? Number(amountRaw) : amountRaw;
+
+    const year = Number(body?.year);
+    const month = Number(body?.month);
+
+    if (!clientId) {
+      return NextResponse.json({ error: "Missing or invalid clientId" }, { status: 400 });
+    }
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Missing or invalid amount" }, { status: 400 });
+    }
+    if (!Number.isInteger(year) || year < 2000 || year > 3000) {
+      return NextResponse.json({ error: "Invalid year" }, { status: 400 });
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return NextResponse.json({ error: "Invalid month" }, { status: 400 });
+    }
+
+    const period = await getOrCreatePeriod(year, month);
+    if (period.isClosed) {
+      logEvent({ event: "PAYMENT_CREATE", route: "/api/payments", result: "err", reason: "period_closed", year, month });
+      return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
+    }
+
+    const idempotencyKey = req.headers.get("idempotency-key") || undefined;
+
+    if (idempotencyKey) {
+      const existing = await prisma.payment.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        logEvent({ event: "PAYMENT_CREATE", route: "/api/payments", result: "ok", mode: "idempotent_hit", idempotencyKey });
+        return NextResponse.json({ ok: true, payment: existing }, { status: 200 });
+      }
+    }
+
+    // Use a deterministic paidAt inside the requested month
+    const paidAt = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+
+    const created = await prisma.payment.create({
+      data: {
+        clientId,
+        billingPeriodId: period.id,
+        amount,
+        paidAt,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      },
+    });
+
+    logEvent({ event: "PAYMENT_CREATE", route: "/api/payments", result: "ok", paymentId: created.id, year, month });
+    return NextResponse.json({ ok: true, payment: created }, { status: 201 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logEvent({ event: "PAYMENT_CREATE", route: "/api/payments", result: "err", message: msg });
+    return NextResponse.json({ error: "Failed to create payment" }, { status: 500 });
+  }
+}
+
+// Existing delete logic (kept)
 export async function GET(req: Request) {
   try {
     const auth = await requireUser();
     if (auth.error) return auth.error;
     const user = auth.user;
+
     const body = await req.json();
     const paymentId = body?.paymentId;
     const reason = typeof body?.reason === "string" ? body.reason : null;
@@ -65,7 +131,6 @@ export async function GET(req: Request) {
     await assertPeriodOpen(period.id);
 
     await prisma.$transaction(async (tx) => {
-      // snapshot pre-delete
       await tx.auditLog.create({
         data: {
           userId: user.id,
@@ -97,7 +162,6 @@ export async function GET(req: Request) {
       });
     });
 
-    // If no remaining (non-deleted) payments for this client in that month, revert status
     const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
     const end = new Date(Date.UTC(year, month, 1, 0, 0, 0));
 
@@ -138,17 +202,21 @@ export async function GET(req: Request) {
 
     logEvent({ event: "PAYMENT_DELETE", route: "/api/payments", result: "ok", paymentId, year, month, remaining });
     return NextResponse.json({ ok: true, remaining });
-  }
-  catch (err: unknown) {
+  } catch (err: unknown) {
     const code =
-      err && typeof err === "object" && "code" in err
-        ? (err as { code?: unknown }).code
-        : undefined;
+      err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+
     if (code === "BILLING_PERIOD_CLOSED") {
       logEvent({ event: "PAYMENT_DELETE", route: "/api/payments", result: "err", reason: "period_closed" });
       return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
     }
-    logEvent({ event: "PAYMENT_DELETE", route: "/api/payments", result: "err", message: (err instanceof Error ? err.message : String(err)) });
+
+    logEvent({
+      event: "PAYMENT_DELETE",
+      route: "/api/payments",
+      result: "err",
+      message: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: "Failed to delete payment" }, { status: 500 });
   }
 }
