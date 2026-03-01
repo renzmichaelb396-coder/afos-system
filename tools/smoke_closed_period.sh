@@ -22,7 +22,13 @@ echo
 
 if [ -z "$CLIENT_ID" ]; then
   echo "[3] get client id"
-  CLIENT_ID="$(curl -s -b cookies.txt "$BASE/api/clients" | sed -n 's/.*"clients":\[\{"id":"\([^"]*\)".*/\1/p')"
+  CLIENT_ID="$(curl -s -b cookies.txt "$BASE/api/clients" | node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write((x.clients?.[0]?.id)||"")')"
+  if [ -z "$CLIENT_ID" ]; then
+    echo "ERROR: No client id found from /api/clients"
+    exit 1
+  fi
+  echo "CLIENT_ID=$CLIENT_ID"
+
   echo "CLIENT_ID=$CLIENT_ID"
 fi
 

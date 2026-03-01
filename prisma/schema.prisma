@@ -20,11 +20,15 @@ model Client {
 }
 
 model Payment {
-  id       String   @id @default(cuid())
+  id       String @id @default(cuid())
   clientId String
-  client   Client   @relation(fields: [clientId], references: [id])
-  amount   Int
-  paidAt   DateTime @default(now())
+  client   Client @relation(fields: [clientId], references: [id])
+
+  billingPeriodId String
+  billingPeriod   BillingPeriod @relation(fields: [billingPeriodId], references: [id])
+
+  amount Int
+  paidAt DateTime @default(now())
 
   // v3.12 soft-delete
   deletedAt    DateTime?
@@ -33,6 +37,7 @@ model Payment {
 
   @@index([clientId, amount, paidAt])
   @@index([clientId, deletedAt])
+  @@index([billingPeriodId])
 }
 
 model BillingPeriod {
@@ -47,6 +52,8 @@ model BillingPeriod {
   closedById String?
 
   clientStatuses ClientStatusByMonth[]
+
+  payments Payment[]
 
   @@unique([year, month])
 }

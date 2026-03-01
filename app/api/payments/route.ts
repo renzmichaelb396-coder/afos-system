@@ -154,7 +154,12 @@ export async function POST(req: Request) {
     }
 
     const payment = await prisma.payment.create({
-      data: { clientId, amount: Math.round(amount), paidAt },
+      data: {
+        amount: Math.round(amount),
+        paidAt,
+        client: { connect: { id: clientId } },
+        billingPeriod: { connect: { id: period.id } },
+      },
     });
 
     await prisma.clientStatusByMonth.upsert({
@@ -200,6 +205,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
     logEvent({ event: "PAYMENT_CREATE", route: "/api/payments", result: "err", message: (err instanceof Error ? err.message : String(err)) });
+    console.error("PAYMENT_CREATE_ERR", err);
     return NextResponse.json({ error: "Failed to record payment" }, { status: 500 });
   }
 }
