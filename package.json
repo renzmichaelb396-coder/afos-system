@@ -19,7 +19,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "dotenv -e .env.test -- bash scripts/test-integration.sh",
-    "test:integration:prod": "pnpm exec prisma migrate reset --force --skip-seed && node scripts/seed-test-fixtures.mjs && pnpm run build && timeout 300 bash -lc 'set -euo pipefail; PORT=3000; : > /tmp/server.log; echo CI_BLOCK_START; if command -v lsof >/dev/null 2>&1; then kill -9 $(lsof -tiTCP:$PORT -sTCP:LISTEN) 2>/dev/null || true; fi; setsid pnpm run start -p $PORT >/tmp/server.log 2>&1 & SERVER_PID=$!; echo SERVER_PID=$SERVER_PID; sleep 1; if ! kill -0 $SERVER_PID 2>/dev/null; then echo SERVER_DIED_EARLY; tail -n 200 /tmp/server.log || true; exit 1; fi; pnpm exec wait-on --timeout 60000 http://127.0.0.1:$PORT/api/health; pnpm exec vitest run --environment node tests/integration/*.test.ts; TEST_CODE=$?; echo TEST_CODE=$TEST_CODE; kill -- -$SERVER_PID 2>/dev/null || true; sleep 1; kill -9 -- -$SERVER_PID 2>/dev/null || true; echo ---SERVER_LOG_TAIL---; tail -n 200 /tmp/server.log || true; echo CI_BLOCK_END; exit $TEST_CODE'"
+    "test:integration:prod": "pnpm exec prisma migrate reset --force --skip-seed && node scripts/seed-test-fixtures.mjs && pnpm run build && timeout 300 bash -lc 'set -euo pipefail; PORT=3000; : > /tmp/server.log; echo CI_BLOCK_START; if command -v lsof >/dev/null 2>&1; then kill -9 $(lsof -tiTCP:$PORT -sTCP:LISTEN) 2>/dev/null || true; fi; setsid pnpm run start -p $PORT >/tmp/server.log 2>&1 & SERVER_PID=$!; echo SERVER_PID=$SERVER_PID; sleep 1; if ! kill -0 $SERVER_PID 2>/dev/null; then echo SERVER_DIED_EARLY; tail -n 200 /tmp/server.log || true; exit 1; fi; pnpm exec wait-on --timeout 60000 http://127.0.0.1:$PORT/api/health; pnpm exec vitest run --environment node tests/integration/*.test.ts; TEST_CODE=$?; echo TEST_CODE=$TEST_CODE; kill -- -$SERVER_PID 2>/dev/null || true; sleep 1; kill -9 -- -$SERVER_PID 2>/dev/null || true; echo ---SERVER_LOG_TAIL---; tail -n 200 /tmp/server.log || true; echo CI_BLOCK_END; exit $TEST_CODE'",
+    "dev:test": "dotenv -e .env.test -- bash -lc \"NEXT_DISABLE_TURBOPACK=1 next dev -p 3000\"",
+    "dev:env": "dotenv -e .env -- bash -lc \"NEXT_DISABLE_TURBOPACK=1 next dev -p 3000\"",
+    "db:migrate:dev": "dotenv -e .env -- prisma migrate dev",
+    "db:seed:dev": "dotenv -e .env -- node scripts/seed-test-fixtures.mjs",
+    "db:migrate:test": "dotenv -e .env.test -- prisma migrate dev",
+    "db:seed:test": "dotenv -e .env.test -- node scripts/seed-test-fixtures.mjs",
+    "doctor:env": "bash scripts/doctor-env.sh"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.1",

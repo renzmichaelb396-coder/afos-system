@@ -52,3 +52,9 @@ dev.log
 
 !scripts/seed-test-fixtures.mjs
 .env.test
+
+# env files
+.env*
+
+# env files
+.env*
