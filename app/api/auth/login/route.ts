@@ -14,9 +14,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
@@ -49,12 +47,6 @@ export async function POST(req: Request) {
           }
         : { message: String(err) };
 
-    return NextResponse.json(
-      {
-        error: "Failed to login",
-        ...meta,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to login", ...meta }, { status: 500 });
   }
 }
