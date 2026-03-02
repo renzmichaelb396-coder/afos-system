@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { authedFetch } from "./http";
 
-const BASE = "http://127.0.0.1:3000";
 
 describe("RBAC - payments", () => {
   it("ADMIN can create payment", async () => {
