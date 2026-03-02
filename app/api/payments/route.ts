@@ -9,9 +9,11 @@ async function getOrCreatePeriod(year: number, month: number) {
   let period = await prisma.billingPeriod.findUnique({
     where: { year_month: { year, month } },
   });
+
   if (!period) {
     period = await prisma.billingPeriod.create({ data: { year, month } });
   }
+
   return period;
 }
 
@@ -60,8 +62,30 @@ export async function POST(req: Request) {
       },
     });
 
+    await prisma.auditLog.create({
+      data: {
+        entityType: "Payment",
+        entityId: created.id,
+        action: "CREATE",
+        meta: {
+          actorUserId: auth.user.id,
+          clientId,
+          billingPeriodId: period.id,
+          year,
+          month,
+          amount,
+          idempotencyKey: idempotencyKey ?? null,
+        },
+      },
+    });
+
     return NextResponse.json({ ok: true, payment: created }, { status: 201 });
   } catch (err: unknown) {
+
+    const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : undefined;
+    if (code === "P0001") {
+      return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "Failed to create payment", detail: msg }, { status: 500 });
   }

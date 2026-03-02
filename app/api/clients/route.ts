@@ -5,9 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
 
-export async function GET(_req: Request) {
+export async function GET() {
   const auth = await requireUser({ roles: [Role.ADMIN] });
-  if (auth.error) return auth.error;
+    if (auth.error) return auth.error;
 
   const clients = await prisma.client.findMany({
     orderBy: { createdAt: "asc" },
@@ -42,9 +42,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing or invalid monthlyFee" }, { status: 400 });
     }
 
+    if (email) {
+      const exists = await prisma.client.findUnique({ where: { email } });
+      if (exists) return NextResponse.json({ error: "Client email already exists" }, { status: 409 });
+    }
+
+
     const created = await prisma.client.create({
       data: { name, email, monthlyFee: Math.trunc(monthlyFee) },
       select: { id: true, name: true, email: true, monthlyFee: true, createdAt: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        entityType: "Client",
+        entityId: created.id,
+        action: "CREATE",
+        meta: {
+          actorUserId: auth.user.id,
+          name: created.name,
+          email: created.email,
+          monthlyFee: created.monthlyFee,
+        },
+      },
     });
 
     return NextResponse.json({ ok: true, client: created }, { status: 201 });

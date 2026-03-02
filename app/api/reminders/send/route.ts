@@ -32,12 +32,14 @@ async function getOrCreatePeriod(year: number, month: number) {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
+  if (auth.error) return auth.error;
   // auth gate
-  const auth = req.headers.get("authorization");
+  const authHeader = req.headers.get("authorization");
   if (!process.env.REMINDERS_SECRET) {
     return NextResponse.json({ error: "Reminders not configured (missing REMINDERS_SECRET)" }, { status: 501 });
   }
-  if (auth !== `Bearer ${process.env.REMINDERS_SECRET}`) {
+  if (authHeader !== `Bearer ${process.env.REMINDERS_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
