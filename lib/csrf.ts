@@ -10,11 +10,11 @@
  *
  * Configuration:
  *   APP_URL env var — the canonical production URL (e.g. https://afos.example.com).
- *   If not set, the expected host is derived from the incoming Host header.
- *   This is correct because:
- *     - In production, APP_URL is always set.
- *     - In development / test, the Host header reflects the actual bind address
- *       that the browser/client used to reach the server (e.g. localhost:3000).
+ *   The expected host is ALWAYS derived from the incoming Host header so that
+ *   same-origin requests succeed regardless of which subdomain or alias Vercel
+ *   routes the request through (e.g. per-deployment preview URLs).
+ *   APP_URL is kept as an additional allowed host for cross-origin scenarios
+ *   (e.g. a custom domain pointing to the same deployment).
  *
  * NOTE: req.url in Next.js 16 standalone mode reflects the server's bind address
  * (0.0.0.0), NOT the client-visible host. Always use the Host header instead.
@@ -46,33 +46,40 @@ export function validateCsrf(req: Request): Response | null {
     return null;
   }
 
-  // Determine the expected host.
-  // Priority: APP_URL env var → Host header → req.url.host (fallback).
-  // We deliberately avoid req.url.host because in Next.js standalone mode
-  // the server binds to 0.0.0.0 and req.url reflects that, not the
-  // client-visible hostname.
-  const appUrl = process.env.APP_URL;
-  let expectedHost: string;
+  // Build the set of allowed hosts.
+  // Primary: the Host header — this is what the browser actually used to reach
+  // the server, so a same-origin request will always have a matching Origin.
+  // This correctly handles Vercel per-deployment URLs, preview URLs, and
+  // custom domain aliases without any additional configuration.
+  // Secondary: APP_URL host (if set) — allows a canonical domain to be
+  // accepted even when the request arrives via a different alias.
+  const allowedHosts = new Set<string>();
 
+  const hostHeader = req.headers.get("host");
+  if (hostHeader) {
+    allowedHosts.add(hostHeader.toLowerCase());
+  }
+
+  const appUrl = process.env.APP_URL;
   if (appUrl) {
-    expectedHost = new URL(appUrl).host;
-  } else {
-    // Use the Host header — this is what the client actually sent.
-    const hostHeader = req.headers.get("host");
-    if (hostHeader) {
-      expectedHost = hostHeader;
-    } else {
-      // Absolute last resort: fall back to req.url.host
-      expectedHost = url.host;
+    try {
+      allowedHosts.add(new URL(appUrl).host.toLowerCase());
+    } catch {
+      // Invalid APP_URL — ignore
     }
+  }
+
+  // If we have no allowed hosts at all, fall back to req.url.host
+  if (allowedHosts.size === 0) {
+    allowedHosts.add(url.host.toLowerCase());
   }
 
   // Check Origin header first (most reliable)
   const origin = req.headers.get("origin");
   if (origin) {
     try {
-      const originHost = new URL(origin).host;
-      if (originHost !== expectedHost) {
+      const originHost = new URL(origin).host.toLowerCase();
+      if (!allowedHosts.has(originHost)) {
         return NextResponse.json(
           { error: "Forbidden", code: "CSRF_ORIGIN_MISMATCH" },
           { status: 403 }
@@ -91,8 +98,8 @@ export function validateCsrf(req: Request): Response | null {
   const referer = req.headers.get("referer");
   if (referer) {
     try {
-      const refHost = new URL(referer).host;
-      if (refHost !== expectedHost) {
+      const refHost = new URL(referer).host.toLowerCase();
+      if (!allowedHosts.has(refHost)) {
         return NextResponse.json(
           { error: "Forbidden", code: "CSRF_REFERER_MISMATCH" },
           { status: 403 }
