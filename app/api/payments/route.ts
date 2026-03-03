@@ -98,15 +98,27 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
   if (auth.error) return auth.error;
 
+  const { searchParams } = new URL(req.url);
+  const now = new Date();
+  const year = Number(searchParams.get("year") ?? now.getFullYear());
+  const month = Number(searchParams.get("month") ?? (now.getMonth() + 1));
+
+  // Resolve billing period for the requested period (create if absent)
+  const period = await getOrCreatePeriod(year, month);
+
   const payments = await prisma.payment.findMany({
-    where: { deletedAt: null },
+    where: { billingPeriodId: period.id, deletedAt: null },
     orderBy: { paidAt: "desc" },
     take: 100,
+    include: { client: { select: { name: true } } },
   });
 
-  return NextResponse.json({ ok: true, payments }, { status: 200 });
+  return NextResponse.json(
+    { ok: true, year, month, isClosed: period.isClosed, payments },
+    { status: 200 }
+  );
 }

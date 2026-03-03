@@ -20,7 +20,8 @@ export default function AuditPage() {
   async function load() {
     const res = await fetch("/api/audit");
     const data = await res.json();
-    setLogs(Array.isArray(data) ? data : []);
+    // API returns { ok, logs } envelope
+    setLogs(Array.isArray(data?.logs) ? data.logs : Array.isArray(data) ? data : []);
   }
 
   useEffect(() => {
