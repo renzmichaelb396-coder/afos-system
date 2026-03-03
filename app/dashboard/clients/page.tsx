@@ -154,8 +154,18 @@ export default function ClientsPage() {
               </p>
             </div>
 
-            {/* Period selector */}
+            {/* Period selector + Export */}
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => window.open(`/api/export/clients?year=${year}&month=${month}`, "_blank")}
+                className="btn btn-secondary"
+                title="Export clients to CSV"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Export CSV
+              </button>
               <select
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}

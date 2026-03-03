@@ -8,6 +8,8 @@ export const runtime = "nodejs";
  *
  * This prevents open registration on a live system while still allowing
  * a clean first-run bootstrap without any pre-existing credentials.
+ *
+ * Password policy is enforced via registerSchema (Zod).
  */
 
 import { NextResponse } from "next/server";
@@ -18,6 +20,7 @@ import { Role } from "@prisma/client";
 import { registerSchema } from "@/lib/schemas/auth";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
 import { validateCsrf } from "@/lib/csrf";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
   // CSRF check
@@ -25,7 +28,8 @@ export async function POST(req: Request) {
   if (csrfErr) return csrfErr;
 
   // Rate limit: max 5 registration attempts per IP per minute
-  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.register);
+  const ip = getClientIp(req);
+  const rlResponse = checkRateLimit(ip, RATE_LIMITS.register);
   if (rlResponse) return rlResponse;
 
   try {
@@ -44,11 +48,13 @@ export async function POST(req: Request) {
     // ── Bootstrap gate ──────────────────────────────────────────────────────
     // Check user count FIRST (cheap count query, no full table scan).
     const userCount = await prisma.user.count();
+    let actorId: string | null = null;
 
     if (userCount > 0) {
       // System already has users — require an authenticated ADMIN session.
       const auth = await requireUser({ roles: [Role.ADMIN] });
       if (auth.error) return auth.error;
+      actorId = auth.user.id;
     }
     // ────────────────────────────────────────────────────────────────────────
 
@@ -57,27 +63,35 @@ export async function POST(req: Request) {
     const user = await prisma.$transaction(async (tx) => {
       const count = await tx.user.count();
       const role: Role = count === 0 ? Role.ADMIN : Role.ACCOUNTANT;
-      return tx.user.create({
+      const created = await tx.user.create({
         data: { email, password: hashed, role },
       });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          entityType: "User",
+          entityId: created.id,
+          action: "USER_CREATED",
+          meta: { email: created.email, role: created.role, ip },
+        },
+      });
+      return created;
     });
+
+    logger.info("[register] user created", { userId: user.id, role: user.role, actorId, ip });
 
     return NextResponse.json({ ok: true, userId: user.id }, { status: 201 });
   } catch (err: unknown) {
-    const meta =
-      err && typeof err === "object"
-        ? {
-            name: "name" in err ? String((err as { name?: unknown }).name) : undefined,
-            code: "code" in err ? String((err as { code?: unknown }).code) : undefined,
-            message: "message" in err ? String((err as { message?: unknown }).message) : String(err),
-          }
-        : { message: String(err) };
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : undefined;
 
-    if (meta.code === "P2002") {
+    if (code === "P2002") {
       return NextResponse.json({ error: "Email already exists" }, { status: 409 });
     }
 
-    console.error("[register]", err);
-    return NextResponse.json({ error: "Failed to register", ...meta }, { status: 500 });
+    logger.error("[register] unexpected error", err);
+    return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 500 });
   }
 }
