@@ -3,11 +3,13 @@ import { authedFetch } from "./http";
 
 describe("Clients (integration)", () => {
   it("allows ADMIN to create a client (201)", async () => {
+    // Use a unique email per run to avoid 409 conflict from previous test runs
+    const uniqueEmail = `acme-${Date.now()}@example.com`;
     const res = await authedFetch("/api/clients", {
       method: "POST",
       body: JSON.stringify({
         name: "Acme Co",
-        email: "acme@example.com",
+        email: uniqueEmail,
         monthlyFee: 2500,
       }),
     });

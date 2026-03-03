@@ -4,10 +4,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
+import { validateCsrf } from "@/lib/csrf";
+import { createClientSchema } from "@/lib/schemas/clients";
 
 export async function GET() {
   const auth = await requireUser({ roles: [Role.ADMIN] });
-    if (auth.error) return auth.error;
+  if (auth.error) return auth.error;
 
   const clients = await prisma.client.findMany({
     orderBy: { createdAt: "asc" },
@@ -18,38 +20,34 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
+
   const auth = await requireUser({ roles: [Role.ADMIN] });
   if (auth.error) return auth.error;
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const parsed = createClientSchema.safeParse(body);
 
-    const name = typeof body?.name === "string" ? body.name.trim() : "";
-    const emailRaw = body?.email;
-    const email =
-      emailRaw === null || emailRaw === undefined || String(emailRaw).trim() === ""
-        ? null
-        : String(emailRaw).trim();
-
-    const monthlyFeeRaw = body?.monthlyFee;
-    const monthlyFee = typeof monthlyFeeRaw === "string" ? Number(monthlyFeeRaw) : monthlyFeeRaw;
-
-    if (!name) return NextResponse.json({ error: "Missing or invalid name" }, { status: 400 });
-    if (email !== null && !email.includes("@")) {
-      return NextResponse.json({ error: "Invalid email" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
     }
-    if (typeof monthlyFee !== "number" || !Number.isFinite(monthlyFee) || monthlyFee <= 0) {
-      return NextResponse.json({ error: "Missing or invalid monthlyFee" }, { status: 400 });
-    }
+
+    const { name, email, monthlyFee } = parsed.data;
 
     if (email) {
       const exists = await prisma.client.findUnique({ where: { email } });
-      if (exists) return NextResponse.json({ error: "Client email already exists" }, { status: 409 });
+      if (exists) {
+        return NextResponse.json({ error: "Client email already exists" }, { status: 409 });
+      }
     }
 
-
     const created = await prisma.client.create({
-      data: { name, email, monthlyFee: Math.trunc(monthlyFee) },
+      data: { name, email, monthlyFee },
       select: { id: true, name: true, email: true, monthlyFee: true, createdAt: true },
     });
 

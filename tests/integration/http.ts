@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env.test", override: true });
 
 const BASE = process.env.AFOS_BASE_URL ?? "http://127.0.0.1:3000";
+// Derive the Origin from BASE for CSRF validation
+const ORIGIN = new URL(BASE).origin;
 
 const SEED_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "stella.trusova@gmail.com";
 const SEED_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "";
@@ -22,7 +24,7 @@ let _cachedCookie: string | null = null;
 export async function loginAsSeedAdmin() {
   const res = await fetch(`${BASE}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Origin": ORIGIN },
     body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
   });
 
@@ -57,6 +59,7 @@ export async function authedFetch(path: string, init: RequestInit = {}) {
   const mkHeaders = (cookie: string) => {
     const headers = new Headers(init.headers as any);
     headers.set("Cookie", cookie);
+    headers.set("Origin", ORIGIN);
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     return headers;
   };

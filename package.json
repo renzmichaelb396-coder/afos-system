@@ -25,7 +25,7 @@
     "db:migrate:dev": "dotenv -e .env -- prisma migrate dev",
     "db:seed:dev": "dotenv -e .env -- node scripts/seed-test-fixtures.mjs",
     "db:migrate:test": "dotenv -e .env.test -- prisma migrate dev",
-    "db:seed:test":"dotenv -e .env.test -- bash -lc \"node scripts/seed-test-fixtures.mjs && node scripts/seed-test-admin.mjs\"",
+    "db:seed:test": "dotenv -e .env.test -- bash -lc \"node scripts/seed-test-fixtures.mjs && node scripts/seed-test-admin.mjs\"",
     "doctor:env": "bash tools/doctor-env.sh",
     "db:sql:dev": "bash tools/psql-dev.sh"
   },
@@ -42,7 +42,8 @@
     "pg": "^8.18.0",
     "prisma": "^5.22.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

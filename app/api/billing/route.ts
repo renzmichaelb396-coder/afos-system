@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
+import { validateCsrf } from "@/lib/csrf";
+import { billingQuerySchema, closePeriodSchema } from "@/lib/schemas/billing";
 
 async function getOrCreatePeriod(year: number, month: number) {
   let period = await prisma.billingPeriod.findUnique({
@@ -22,15 +24,19 @@ export async function GET(req: Request) {
   if (auth.error) return auth.error;
 
   const { searchParams } = new URL(req.url);
-  const year = Number(searchParams.get("year"));
-  const month = Number(searchParams.get("month"));
+  const parsed = billingQuerySchema.safeParse({
+    year: searchParams.get("year"),
+    month: searchParams.get("month"),
+  });
 
-  if (!Number.isInteger(year) || year < 2000 || year > 3000) {
-    return NextResponse.json({ error: "Invalid year" }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation failed", issues: parsed.error.issues },
+      { status: 400 }
+    );
   }
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    return NextResponse.json({ error: "Invalid month" }, { status: 400 });
-  }
+
+  const { year, month } = parsed.data;
 
   try {
     const period = await getOrCreatePeriod(year, month);
@@ -45,21 +51,24 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
+
   const auth = await requireUser({ roles: [Role.ADMIN] });
   if (auth.error) return auth.error;
 
   try {
-    const body = await req.json();
-    const year = Number(body?.year);
-    const month = Number(body?.month);
+    const body = await req.json().catch(() => ({}));
+    const parsed = closePeriodSchema.safeParse(body);
 
-    if (!Number.isInteger(year) || year < 2000 || year > 3000) {
-      return NextResponse.json({ error: "Invalid year" }, { status: 400 });
-    }
-    if (!Number.isInteger(month) || month < 1 || month > 12) {
-      return NextResponse.json({ error: "Invalid month" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
     }
 
+    const { year, month } = parsed.data;
     const period = await getOrCreatePeriod(year, month);
 
     if (period.isClosed) {
@@ -69,19 +78,30 @@ export async function POST(req: Request) {
       );
     }
 
-    const updated = await prisma.billingPeriod.update({
-      where: { id: period.id },
-      data: { isClosed: true, closedAt: new Date(), closedById: auth.user.id },
-      select: { id: true, year: true, month: true, isClosed: true, closedAt: true, closedById: true },
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const closed = await tx.billingPeriod.update({
+        where: { id: period.id },
+        data: { isClosed: true, closedAt: new Date(), closedById: auth.user.id },
+        select: {
+          id: true,
+          year: true,
+          month: true,
+          isClosed: true,
+          closedAt: true,
+          closedById: true,
+        },
+      });
 
-    await prisma.auditLog.create({
-      data: {
-        entityType: "BillingPeriod",
-        entityId: updated.id,
-        action: "CLOSE",
-        meta: { actorUserId: auth.user.id, year: updated.year, month: updated.month },
-      },
+      await tx.auditLog.create({
+        data: {
+          entityType: "BillingPeriod",
+          entityId: closed.id,
+          action: "CLOSE",
+          meta: { actorUserId: auth.user.id, year: closed.year, month: closed.month },
+        },
+      });
+
+      return closed;
     });
 
     return NextResponse.json(

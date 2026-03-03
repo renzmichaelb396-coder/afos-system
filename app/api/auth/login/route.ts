@@ -3,16 +3,32 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { SESSION_COOKIE_NAME, sessionCookieOptions, buildSetCookieHeader } from "@/lib/session-cookie";
+import { loginSchema } from "@/lib/schemas/auth";
+import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
+import { validateCsrf } from "@/lib/csrf";
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const email = body?.email;
-    const password = body?.password;
+  // CSRF check
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
 
-    if (!email || !password) {
-      return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
+  // Rate limit: max 10 login attempts per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.login);
+  if (rlResponse) return rlResponse;
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const parsed = loginSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
     }
+
+    const { email, password } = parsed.data;
 
     const user = await prisma.user.findUnique({ where: { email } });
 
@@ -28,19 +44,15 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({ ok: true });
 
-    // Explicit Set-Cookie header for curl + browsers (most reliable)
-    res.headers.append("Set-Cookie", `afos_session=${user.id}; Path=/; HttpOnly; SameSite=Lax`);
+    // Set-Cookie via raw header (curl + non-browser clients)
+    res.headers.append("Set-Cookie", buildSetCookieHeader(user.id));
 
-    // Also set via NextResponse cookies API (browser-friendly)
-    res.cookies.set("afos_session", user.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-    });
+    // Set-Cookie via NextResponse API (browser)
+    res.cookies.set(SESSION_COOKIE_NAME, user.id, sessionCookieOptions);
 
     return res;
   } catch (err: unknown) {
-    console.error(err);
+    console.error("[login]", err);
 
     const meta =
       err && typeof err === "object"

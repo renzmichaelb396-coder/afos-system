@@ -1,44 +1,57 @@
 export const runtime = "nodejs";
 
+/**
+ * POST /api/reminders/trigger
+ *
+ * ADMIN-only endpoint that triggers the reminder send process.
+ * Calls /api/reminders/send handler DIRECTLY as a module import —
+ * no localhost HTTP fetch, no self-referential network call.
+ */
+
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
-import { cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
 import { POST as sendReminders } from "@/app/api/reminders/send/route";
+import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
+import { validateCsrf } from "@/lib/csrf";
+import { reminderParamsSchema } from "@/lib/schemas/reminders";
 
 export async function POST(req: Request) {
+  // CSRF check
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
+
+  // Rate limit: max 5 reminder trigger requests per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.reminders);
+  if (rlResponse) return rlResponse;
+
   try {
     const auth = await requireUser({ roles: [Role.ADMIN] });
     if (auth.error) return auth.error;
 
-    const cookieStore = await cookies();
-    const session = cookieStore.get("afos_session");
+    // Validate body params
+    const body = await req.json().catch(() => ({}));
+    const parsed = reminderParamsSchema.safeParse(body);
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.value },
-      select: { id: true, role: true },
-    });
-
-            if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (user?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Forbidden (ADMIN only)" }, { status: 403 });
-    }
-
-    const { year, month } = await req.json();
+    const { year, month } = parsed.data;
 
     const secret = process.env.REMINDERS_SECRET;
     if (!secret) {
-      return NextResponse.json({ error: "Reminders not configured (missing REMINDERS_SECRET)" }, { status: 501 });
+      return NextResponse.json(
+        { error: "Reminders not configured (missing REMINDERS_SECRET)" },
+        { status: 501 }
+      );
     }
 
+    // Build a synthetic Request for the send handler.
+    // This avoids any network call to localhost.
     const url = new URL(req.url);
     url.pathname = "/api/reminders/send";
     url.searchParams.set("year", String(year));
@@ -51,7 +64,7 @@ export async function POST(req: Request) {
 
     return await sendReminders(innerReq);
   } catch (err) {
-    console.error(err);
+    console.error("[reminders/trigger]", err);
     return NextResponse.json({ error: "Failed to trigger reminders" }, { status: 500 });
   }
 }

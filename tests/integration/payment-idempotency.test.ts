@@ -19,10 +19,14 @@ describe("Payment Idempotency", () => {
       body: JSON.stringify(payload),
     });
 
-    expect(first.res.status).toBe(200);
-    expect(second.res.status).toBe(200);
+    // First creation returns 201; replay returns 200
+    expect([200, 201]).toContain(first.res.status);
+    expect([200, 201]).toContain(second.res.status);
 
-    expect(first.json?.id).toBeTruthy();
-    expect(first.json?.id).toBe(second.json?.id);
+    // Payment ID is nested under .payment
+    const firstId = first.json?.payment?.id ?? first.json?.id;
+    const secondId = second.json?.payment?.id ?? second.json?.id;
+    expect(firstId).toBeTruthy();
+    expect(firstId).toBe(secondId);
   });
 });

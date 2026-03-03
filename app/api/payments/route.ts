@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
+import { validateCsrf } from "@/lib/csrf";
+import { createPaymentSchema } from "@/lib/schemas/payments";
 
 async function getOrCreatePeriod(year: number, month: number) {
   let period = await prisma.billingPeriod.findUnique({
@@ -18,30 +20,29 @@ async function getOrCreatePeriod(year: number, month: number) {
 }
 
 export async function POST(req: Request) {
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
+
   const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
   if (auth.error) return auth.error;
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const parsed = createPaymentSchema.safeParse(body);
 
-    const clientId = typeof body?.clientId === "string" ? body.clientId : String(body?.clientId ?? "");
-    const amount = typeof body?.amount === "string" ? Number(body.amount) : body?.amount;
-    const year = Number(body?.year);
-    const month = Number(body?.month);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
+    }
 
-    if (!clientId) return NextResponse.json({ error: "Missing or invalid clientId" }, { status: 400 });
-    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json({ error: "Missing or invalid amount" }, { status: 400 });
-    }
-    if (!Number.isInteger(year) || year < 2000 || year > 3000) {
-      return NextResponse.json({ error: "Invalid year" }, { status: 400 });
-    }
-    if (!Number.isInteger(month) || month < 1 || month > 12) {
-      return NextResponse.json({ error: "Invalid month" }, { status: 400 });
-    }
+    const { clientId, amount, year, month } = parsed.data;
 
     const period = await getOrCreatePeriod(year, month);
-    if (period.isClosed) return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
+    if (period.isClosed) {
+      return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
+    }
 
     const idempotencyKey = req.headers.get("idempotency-key") || undefined;
 
@@ -52,37 +53,43 @@ export async function POST(req: Request) {
 
     const paidAt = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
 
-    const created = await prisma.payment.create({
-      data: {
-        clientId,
-        billingPeriodId: period.id,
-        amount,
-        paidAt,
-        ...(idempotencyKey ? { idempotencyKey } : {}),
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        entityType: "Payment",
-        entityId: created.id,
-        action: "CREATE",
-        meta: {
-          actorUserId: auth.user.id,
+    const created = await prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.create({
+        data: {
           clientId,
           billingPeriodId: period.id,
-          year,
-          month,
           amount,
-          idempotencyKey: idempotencyKey ?? null,
+          paidAt,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
         },
-      },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          entityType: "Payment",
+          entityId: payment.id,
+          action: "CREATE",
+          meta: {
+            actorUserId: auth.user.id,
+            clientId,
+            billingPeriodId: period.id,
+            year,
+            month,
+            amount,
+            idempotencyKey: idempotencyKey ?? null,
+          },
+        },
+      });
+
+      return payment;
     });
 
     return NextResponse.json({ ok: true, payment: created }, { status: 201 });
   } catch (err: unknown) {
-
-    const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : undefined;
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : undefined;
     if (code === "P0001") {
       return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
     }
@@ -91,7 +98,6 @@ export async function POST(req: Request) {
   }
 }
 
-// keep GET minimal so it doesn't block compilation if it's unused
 export async function GET() {
   const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
   if (auth.error) return auth.error;
