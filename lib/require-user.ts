@@ -33,6 +33,20 @@ export async function requireUser(options?: RequireOptions) {
     };
   }
 
+  // [S-1 HOTFIX] Block deactivated users immediately, even if they hold a valid session cookie.
+  // This ensures admin deactivation takes effect without requiring the user to log out.
+  if (!user.isActive) {
+    return {
+      error: NextResponse.json(
+        {
+          error: "Account deactivated. Contact your administrator.",
+          code: "AUTH_ACCOUNT_DEACTIVATED",
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
   if (options?.roles && !options.roles.includes(user.role)) {
     return {
       error: NextResponse.json(

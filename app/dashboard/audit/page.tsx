@@ -166,7 +166,7 @@ export default function AuditPage() {
 
           {/* Filter bar */}
           <div className="card card-pad mb-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
               <div className="form-group lg:col-span-2">
                 <label className="form-label">Search</label>
                 <input
@@ -186,6 +186,18 @@ export default function AuditPage() {
                   onChange={(e) => setFilterAction(e.target.value)}
                   placeholder="e.g. LOGIN_FAILED"
                   className="form-input"
+                />
+              </div>
+              {/* [B-3 HOTFIX] User ID filter — state and API support existed but input was missing */}
+              <div className="form-group">
+                <label className="form-label">User ID</label>
+                <input
+                  type="text"
+                  value={filterUserId}
+                  onChange={(e) => setFilterUserId(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+                  placeholder="Paste user ID…"
+                  className="form-input font-mono text-xs"
                 />
               </div>
               <div className="form-group">

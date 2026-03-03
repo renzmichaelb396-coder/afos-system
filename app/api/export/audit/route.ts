@@ -67,6 +67,22 @@ export async function GET(req: Request) {
     const csv = [header, ...rows].join("\n");
     const filename = `afos-audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
 
+    // [S-2 HOTFIX] Log the export action itself so the chain of custody is preserved.
+    // Filters used are stored in meta so auditors know exactly what was exported.
+    await prisma.auditLog.create({
+      data: {
+        userId: auth.user.id,
+        entityType: "AuditLog",
+        entityId: "audit-export",
+        action: "EXPORT_CSV",
+        meta: {
+          filters: { userId: userId ?? null, action: action ?? null, from: from ?? null, to: to ?? null, search: search ?? null },
+          rowCount: logs.length,
+          filename,
+        },
+      },
+    });
+
     return new Response(csv, {
       status: 200,
       headers: {
