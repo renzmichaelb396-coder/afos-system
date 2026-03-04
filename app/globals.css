@@ -340,3 +340,95 @@ body {
   .section-header { align-items: center; display: flex; justify-content: space-between; margin-bottom: 1rem; }
   .section-title  { color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 }
+
+/* ─────────────────────────────────────────────
+   Mobile Responsiveness — v2.2
+───────────────────────────────────────────── */
+
+/* Horizontal scroll for tables on small screens */
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Sidebar collapses on mobile */
+@media (max-width: 767px) {
+  .sidebar {
+    display: none;
+  }
+
+  .page-body {
+    padding: 1.25rem 1rem;
+  }
+
+  /* Stack page header vertically */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  /* Stack filter grids to single column */
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* KPI stat grids: 2 columns on mobile */
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Make inline KPI strips responsive */
+  [style*="grid-template-columns: repeat(4, 1fr)"],
+  [style*="gridTemplateColumns: repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Buttons in page header wrap */
+  .page-header > div:last-child {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  /* Modal full width on mobile */
+  .modal {
+    max-width: 100%;
+    border-radius: var(--radius-lg);
+  }
+
+  /* Table action buttons stack */
+  .tbl td > div[style*="justify-content: flex-end"] {
+    flex-wrap: wrap;
+    justify-content: flex-start !important;
+  }
+}
+
+/* Tablet: sidebar visible but narrower */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar {
+    width: 3.5rem;
+    overflow: visible;
+  }
+  .sidebar-logo-name,
+  .sidebar-logo-sub,
+  .nav-item span,
+  .sidebar-section-label,
+  .sidebar-footer span {
+    display: none;
+  }
+  .sidebar-logo {
+    justify-content: center;
+    padding: 0.875rem 0.5rem;
+  }
+  .nav-item {
+    justify-content: center;
+    padding: 0.5rem;
+  }
+  .page-body {
+    padding: 1.5rem 1.25rem;
+  }
+}
+
+/* Large screens: full sidebar */
+@media (min-width: 1024px) {
+  .stat-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

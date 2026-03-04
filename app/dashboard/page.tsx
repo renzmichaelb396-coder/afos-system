@@ -18,6 +18,9 @@ type DashboardStats = {
   activePaymentsThisMonth: number;
   overdueClients: number;
   revenueThisMonth: number;
+  clientsPaid?: number;
+  clientsUnpaid?: number;
+  clientsMissingPayment?: number;
   currentPeriod: { year: number; month: number; isClosed: boolean };
 };
 
@@ -84,6 +87,11 @@ function Sidebar() {
       href: "/dashboard/audit",
       label: "Audit Log",
       icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>,
+    },
+    {
+      href: "/dashboard/exports",
+      label: "Export History",
+      icon: <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>,
     },
     {
       href: "/dashboard/users",
@@ -282,7 +290,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* KPI Grid */}
+          {/* KPI Grid — Row 1: Core metrics */}
           <div className="stat-grid">
             <KpiCard
               label="Total Clients"
@@ -315,6 +323,42 @@ export default function DashboardPage() {
               iconBg="#faf5ff"
               loading={statsLoading}
               icon={<svg className="h-4 w-4" style={{ color: "#7c3aed" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>}
+            />
+          </div>
+
+          {/* KPI Grid — Row 2: Client payment status for current period */}
+          <div className="stat-grid" style={{ marginTop: "1rem" }}>
+            <KpiCard
+              label="Clients Paid"
+              value={stats?.clientsPaid ?? 0}
+              sub={`Paid in ${periodLabel}`}
+              iconBg="#f0fdf4"
+              loading={statsLoading}
+              icon={<svg className="h-4 w-4" style={{ color: "#16a34a" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+            />
+            <KpiCard
+              label="Clients Unpaid"
+              value={stats?.clientsUnpaid ?? 0}
+              sub={`Unpaid in ${periodLabel}`}
+              iconBg="#fffbeb"
+              loading={statsLoading}
+              icon={<svg className="h-4 w-4" style={{ color: "#d97706" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+            />
+            <KpiCard
+              label="No Period Record"
+              value={stats?.clientsMissingPayment ?? 0}
+              sub="No billing period yet"
+              iconBg="#f9fafb"
+              loading={statsLoading}
+              icon={<svg className="h-4 w-4" style={{ color: "#6b7280" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" /></svg>}
+            />
+            <KpiCard
+              label="Period Status"
+              value={stats?.currentPeriod.isClosed ? "Closed" : "Open"}
+              sub={periodLabel}
+              iconBg={stats?.currentPeriod.isClosed ? "#fef2f2" : "#f0fdf4"}
+              loading={statsLoading}
+              icon={<svg className="h-4 w-4" style={{ color: stats?.currentPeriod.isClosed ? "#dc2626" : "#16a34a" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185z" /></svg>}
             />
           </div>
 

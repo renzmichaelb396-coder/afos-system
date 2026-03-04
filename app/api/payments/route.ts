@@ -51,6 +51,24 @@ export async function POST(req: Request) {
       if (existing) return NextResponse.json({ ok: true, payment: existing }, { status: 200 });
     }
 
+    // Duplicate payment protection: check if a non-deleted payment already exists
+    // for this client in this billing period.
+    // Admins may override by passing { override: true } in the request body.
+    const { override } = (body as { override?: boolean });
+    const duplicate = await prisma.payment.findFirst({
+      where: { clientId, billingPeriodId: period.id, deletedAt: null },
+    });
+    if (duplicate && !override) {
+      return NextResponse.json(
+        {
+          error: "Payment already recorded for this client in this billing period.",
+          code: "DUPLICATE_PAYMENT",
+          existingPaymentId: duplicate.id,
+        },
+        { status: 409 }
+      );
+    }
+
     const paidAt = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
 
     const created = await prisma.$transaction(async (tx) => {

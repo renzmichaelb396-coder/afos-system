@@ -12,6 +12,9 @@ export const runtime = "nodejs";
  *   activePaymentsThisMonth: number,
  *   overdueClients: number,
  *   revenueThisMonth: number,
+ *   clientsPaid: number,           // v2.2 — status = PAID this month
+ *   clientsUnpaid: number,         // v2.2 — status = UNPAID this month
+ *   clientsMissingPayment: number, // v2.2 — no status record at all this month
  *   recentActivity: AuditLog[],
  *   currentPeriod: { year, month, isClosed }
  * }
@@ -31,13 +34,8 @@ export async function GET() {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
-    // Run all queries in parallel
-    const [
-      totalClients,
-      currentPeriod,
-      recentActivity,
-    ] = await Promise.all([
-      prisma.client.count(),
+    const [totalClients, currentPeriod, recentActivity] = await Promise.all([
+      prisma.client.count({ where: { deletedAt: null } }),
       prisma.billingPeriod.findUnique({
         where: { year_month: { year, month } },
       }),
@@ -50,31 +48,39 @@ export async function GET() {
     let activePaymentsThisMonth = 0;
     let overdueClients = 0;
     let revenueThisMonth = 0;
+    let clientsPaid = 0;
+    let clientsUnpaid = 0;
+    let clientsMissingPayment = 0;
 
     if (currentPeriod) {
-      const [paymentsAgg, unpaidCount] = await Promise.all([
+      const [paymentsAgg, paidCount, unpaidCount, statusCount] = await Promise.all([
         prisma.payment.aggregate({
-          where: {
-            billingPeriodId: currentPeriod.id,
-            deletedAt: null,
-          },
+          where: { billingPeriodId: currentPeriod.id, deletedAt: null },
           _sum: { amount: true },
           _count: { id: true },
         }),
         prisma.clientStatusByMonth.count({
-          where: {
-            billingPeriodId: currentPeriod.id,
-            status: "UNPAID",
-          },
+          where: { billingPeriodId: currentPeriod.id, status: "PAID" },
+        }),
+        prisma.clientStatusByMonth.count({
+          where: { billingPeriodId: currentPeriod.id, status: "UNPAID" },
+        }),
+        prisma.clientStatusByMonth.count({
+          where: { billingPeriodId: currentPeriod.id },
         }),
       ]);
 
       activePaymentsThisMonth = paymentsAgg._count.id;
       revenueThisMonth = paymentsAgg._sum.amount ?? 0;
       overdueClients = unpaidCount;
+      clientsPaid = paidCount;
+      clientsUnpaid = unpaidCount;
+      // Clients with no status record at all for this period
+      clientsMissingPayment = Math.max(0, totalClients - statusCount);
     } else {
-      // No period yet — all clients are effectively overdue
+      // No period yet — all clients are missing payment
       overdueClients = totalClients;
+      clientsMissingPayment = totalClients;
     }
 
     return NextResponse.json(
@@ -85,6 +91,9 @@ export async function GET() {
           activePaymentsThisMonth,
           overdueClients,
           revenueThisMonth,
+          clientsPaid,
+          clientsUnpaid,
+          clientsMissingPayment,
           currentPeriod: currentPeriod
             ? { year, month, isClosed: currentPeriod.isClosed }
             : { year, month, isClosed: false },

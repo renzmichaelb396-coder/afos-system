@@ -24,6 +24,9 @@ model Client {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  // v2.2 soft delete
+  deletedAt  DateTime?
+
   payments        Payment[]
   monthlyStatuses ClientStatusByMonth[]
 }
