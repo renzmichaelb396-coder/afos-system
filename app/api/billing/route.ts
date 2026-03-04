@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
 import { validateCsrf } from "@/lib/csrf";
 import { billingQuerySchema, closePeriodSchema } from "@/lib/schemas/billing";
+import { logger } from "@/lib/logger";
 
 async function getOrCreatePeriod(year: number, month: number) {
   let period = await prisma.billingPeriod.findUnique({
@@ -45,8 +46,8 @@ export async function GET(req: Request) {
       { status: 200 }
     );
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "Failed to fetch billing period", detail: msg }, { status: 500 });
+    logger.error("[billing:GET]", err);
+    return NextResponse.json({ error: "Failed to fetch billing period." }, { status: 500 });
   }
 }
 
@@ -94,6 +95,7 @@ export async function POST(req: Request) {
 
       await tx.auditLog.create({
         data: {
+          userId: auth.user.id,
           entityType: "BillingPeriod",
           entityId: closed.id,
           action: "CLOSE",
@@ -102,6 +104,13 @@ export async function POST(req: Request) {
       });
 
       return closed;
+    });
+
+    logger.info("[billing:POST] period closed", {
+      periodId: updated.id,
+      year: updated.year,
+      month: updated.month,
+      actorId: auth.user.id,
     });
 
     return NextResponse.json(
@@ -117,7 +126,7 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "Failed to close billing period", detail: msg }, { status: 500 });
+    logger.error("[billing:POST]", err);
+    return NextResponse.json({ error: "Failed to close billing period." }, { status: 500 });
   }
 }

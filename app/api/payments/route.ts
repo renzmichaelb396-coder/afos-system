@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
 import { validateCsrf } from "@/lib/csrf";
 import { createPaymentSchema } from "@/lib/schemas/payments";
+import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 async function getOrCreatePeriod(year: number, month: number) {
   let period = await prisma.billingPeriod.findUnique({
@@ -22,6 +24,10 @@ async function getOrCreatePeriod(year: number, month: number) {
 export async function POST(req: Request) {
   const csrfErr = validateCsrf(req);
   if (csrfErr) return csrfErr;
+
+  // Rate limit: max 30 payment creates per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.payments);
+  if (rlResponse) return rlResponse;
 
   const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
   if (auth.error) return auth.error;
@@ -41,7 +47,10 @@ export async function POST(req: Request) {
 
     const period = await getOrCreatePeriod(year, month);
     if (period.isClosed) {
-      return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
+      return NextResponse.json(
+        { error: "Billing period is closed and locked. No new payments can be recorded.", code: "PERIOD_LOCKED" },
+        { status: 423 }
+      );
     }
 
     const idempotencyKey = req.headers.get("idempotency-key") || undefined;
@@ -109,10 +118,85 @@ export async function POST(req: Request) {
         ? String((err as { code?: unknown }).code)
         : undefined;
     if (code === "P0001") {
-      return NextResponse.json({ error: "Billing period is closed" }, { status: 409 });
+      return NextResponse.json(
+        { error: "Billing period is closed and locked.", code: "PERIOD_LOCKED" },
+        { status: 423 }
+      );
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "Failed to create payment", detail: msg }, { status: 500 });
+    logger.error("[payments:POST]", err);
+    return NextResponse.json({ error: "Failed to create payment." }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/payments
+ * Body: { paymentId: string }
+ *
+ * Soft-deletes a payment. Blocked if the billing period is closed.
+ * Requires ADMIN role.
+ */
+export async function DELETE(req: Request) {
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
+
+  // Rate limit: max 30 payment mutations per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.payments);
+  if (rlResponse) return rlResponse;
+
+  const auth = await requireUser({ roles: [Role.ADMIN] });
+  if (auth.error) return auth.error;
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const { paymentId } = body as { paymentId?: string };
+
+    if (!paymentId) {
+      return NextResponse.json({ error: "paymentId is required" }, { status: 400 });
+    }
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { billingPeriod: true },
+    });
+
+    if (!payment) {
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    }
+    if (payment.deletedAt) {
+      return NextResponse.json({ error: "Payment is already deleted" }, { status: 409 });
+    }
+    if (payment.billingPeriod.isClosed) {
+      return NextResponse.json(
+        { error: "Billing period is closed and locked. Payments cannot be deleted.", code: "PERIOD_LOCKED" },
+        { status: 423 }
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { deletedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: auth.user.id,
+          entityType: "Payment",
+          entityId: paymentId,
+          action: "PAYMENT_DELETED",
+          meta: {
+            actorUserId: auth.user.id,
+            clientId: payment.clientId,
+            billingPeriodId: payment.billingPeriodId,
+            amount: payment.amount,
+          },
+        },
+      });
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err: unknown) {
+    logger.error("[payments:DELETE]", err);
+    return NextResponse.json({ error: "Failed to delete payment." }, { status: 500 });
   }
 }
 

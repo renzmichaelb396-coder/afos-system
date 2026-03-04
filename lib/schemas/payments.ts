@@ -3,7 +3,7 @@ import { z } from "zod";
 const now = new Date();
 
 export const createPaymentSchema = z.object({
-  // clientId may be a string UUID or a numeric ID (legacy tests send integer)
+  // clientId must be a non-empty string (CUID/UUID)
   clientId: z
     .union([
       z.string({ error: "clientId is required" }).trim().min(1, "clientId is required"),
@@ -13,12 +13,18 @@ export const createPaymentSchema = z.object({
     .union([z.number(), z.string().transform(Number)])
     .refine((v) => Number.isFinite(v) && v > 0, {
       message: "amount must be a positive number",
+    })
+    .refine((v) => v <= 10_000_000, {
+      message: "amount must be 10,000,000 or less",
+    })
+    .refine((v) => Math.round(v * 100) / 100 === v, {
+      message: "amount must have at most 2 decimal places",
     }),
   // year and month are optional; default to the current calendar period
   year: z
     .union([z.number(), z.string().transform(Number)])
-    .refine((v) => Number.isInteger(v) && v >= 2000 && v <= 3000, {
-      message: "year must be an integer between 2000 and 3000",
+    .refine((v) => Number.isInteger(v) && v >= 2000 && v <= 2100, {
+      message: "year must be an integer between 2000 and 2100",
     })
     .optional()
     .default(now.getFullYear()),

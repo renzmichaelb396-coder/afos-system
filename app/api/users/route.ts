@@ -17,6 +17,7 @@ import { Role } from "@prisma/client";
 import { validateCsrf } from "@/lib/csrf";
 import { registerSchema, resetPasswordSchema } from "@/lib/schemas/auth";
 import { logger } from "@/lib/logger";
+import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
 import { z } from "zod";
 
 // ── GET /api/users ────────────────────────────────────────────────────────────
@@ -50,6 +51,10 @@ export async function GET() {
 export async function POST(req: Request) {
   const csrfErr = validateCsrf(req);
   if (csrfErr) return csrfErr;
+
+  // Rate limit: max 20 user mutations per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.users);
+  if (rlResponse) return rlResponse;
 
   const auth = await requireUser({ roles: [Role.ADMIN] });
   if (auth.error) return auth.error;
@@ -134,6 +139,10 @@ const updateUserSchema = z.discriminatedUnion("action", [
 export async function PUT(req: Request) {
   const csrfErr = validateCsrf(req);
   if (csrfErr) return csrfErr;
+
+  // Rate limit: max 20 user mutations per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.users);
+  if (rlResponse) return rlResponse;
 
   const auth = await requireUser({ roles: [Role.ADMIN] });
   if (auth.error) return auth.error;

@@ -11,8 +11,13 @@ import { requireUser } from "@/lib/require-user";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
 import { logger } from "@/lib/logger";
+import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function GET(req: Request) {
+  // Rate limit: max 10 CSV exports per IP per minute
+  const rlResponse = checkRateLimit(getClientIp(req), RATE_LIMITS.export);
+  if (rlResponse) return rlResponse;
+
   const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
   if (auth.error) return auth.error;
 

@@ -12,6 +12,9 @@
  *   RATE_LIMIT_MAX_LOGIN   — max login attempts per window (default: 10)
  *   RATE_LIMIT_MAX_REGISTER — max register attempts        (default: 5)
  *   RATE_LIMIT_MAX_REMINDERS — max reminder triggers       (default: 5)
+ *   RATE_LIMIT_MAX_PAYMENTS  — max payment creates per IP  (default: 30)
+ *   RATE_LIMIT_MAX_USERS     — max user mutations per IP   (default: 20)
+ *   RATE_LIMIT_MAX_EXPORT    — max CSV exports per IP      (default: 10)
  */
 
 type Entry = { timestamps: number[] };
@@ -41,6 +44,18 @@ export const RATE_LIMITS = {
   reminders: {
     id: "reminders",
     max: Number(process.env.RATE_LIMIT_MAX_REMINDERS ?? 5),
+  },
+  payments: {
+    id: "payments",
+    max: Number(process.env.RATE_LIMIT_MAX_PAYMENTS ?? 30),
+  },
+  users: {
+    id: "users",
+    max: Number(process.env.RATE_LIMIT_MAX_USERS ?? 20),
+  },
+  export: {
+    id: "export",
+    max: Number(process.env.RATE_LIMIT_MAX_EXPORT ?? 10),
   },
 } satisfies Record<string, RateLimitConfig>;
 
