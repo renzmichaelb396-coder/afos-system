@@ -19,8 +19,11 @@ import { logger } from "@/lib/logger";
  * deletedAt clients are excluded by default; pass includeDeleted=true (ADMIN only) to see them.
  */
 export async function GET(req: Request) {
-  const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER, Role.ACCOUNTANT] });
+  const auth = await requireUser();
   if (auth.error) return auth.error;
+  if (!can(auth.user, "view_clients")) {
+    return NextResponse.json({ error: "Forbidden", code: "PERMISSION_DENIED" }, { status: 403 });
+  }
 
   try {
     const { searchParams } = new URL(req.url);

@@ -95,6 +95,7 @@ export default function ClientsPage() {
   const [formErr, setFormErr]       = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [showDeleted, setShowDeleted] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const years = useMemo(() => {
     const y = new Date().getFullYear();
@@ -219,6 +220,13 @@ export default function ClientsPage() {
     showToast(`"${clientName}" has been restored.`, "success");
     loadClients(year, month);
   }
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.role) setUserRole(d.role); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     loadClients(year, month);
@@ -421,9 +429,11 @@ export default function ClientsPage() {
                       <td><span className="badge badge-gray">Archived</span></td>
                       <td>
                         <div style={{ alignItems: "center", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                          <button onClick={() => restoreClient(c.id, c.name)} className="btn btn-success btn-sm">
-                            Restore
-                          </button>
+                          {userRole === "ADMIN" && (
+                            <button onClick={() => restoreClient(c.id, c.name)} className="btn btn-success btn-sm">
+                              Restore
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
