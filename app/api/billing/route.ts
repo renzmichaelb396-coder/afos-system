@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
+import { can } from "@/lib/permissions";
 import { validateCsrf } from "@/lib/csrf";
 import { billingQuerySchema, closePeriodSchema } from "@/lib/schemas/billing";
 import { logger } from "@/lib/logger";
@@ -21,8 +22,15 @@ async function getOrCreatePeriod(year: number, month: number) {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
+  const auth = await requireUser();
   if (auth.error) return auth.error;
+
+  if (!can(auth.user, "view_billing")) {
+    return NextResponse.json(
+      { error: "Forbidden", code: "RBAC_FORBIDDEN" },
+      { status: 403 }
+    );
+  }
 
   const { searchParams } = new URL(req.url);
   const parsed = billingQuerySchema.safeParse({

@@ -218,7 +218,7 @@ export default function BillingPage() {
             {/* Controls */}
             <div style={{ alignItems: "center", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
               <button
-                onClick={() => window.open(`/api/export/clients?year=${year}&month=${month}`, "_blank")}
+                onClick={() => window.open(`/api/export/billing?year=${year}&month=${month}`, "_blank")}
                 className="btn btn-secondary btn-sm"
                 title="Export billing summary to CSV"
               >

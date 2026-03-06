@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
+import { can } from "@/lib/permissions";
 import { validateCsrf } from "@/lib/csrf";
 import { createPaymentSchema } from "@/lib/schemas/payments";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
@@ -203,8 +204,15 @@ export async function DELETE(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireUser({ roles: [Role.ADMIN, Role.MANAGER] });
+  const auth = await requireUser();
   if (auth.error) return auth.error;
+
+  if (!can(auth.user, "view_payments")) {
+    return NextResponse.json(
+      { error: "Forbidden", code: "RBAC_FORBIDDEN" },
+      { status: 403 }
+    );
+  }
 
   const { searchParams } = new URL(req.url);
   const now = new Date();
