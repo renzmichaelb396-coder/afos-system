@@ -36,3 +36,4 @@ export async function POST(req: Request) {
     message: `Reset ${updated.count} admin account(s). Password set to: ${newPassword}`,
   });
 }
+// env refresh Thu Mar  5 21:53:43 EST 2026
