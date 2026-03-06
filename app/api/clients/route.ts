@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { Role } from "@prisma/client";
 import { validateCsrf } from "@/lib/csrf";
-import { createClientSchema } from "@/lib/schemas/clients";
+import { createClientSchema, updateClientSchema } from "@/lib/schemas/clients";
 import { can } from "@/lib/permissions";
 import { logger } from "@/lib/logger";
 
@@ -160,6 +160,94 @@ export async function POST(req: Request) {
   } catch (err) {
     logger.error("[clients:POST]", err);
     return NextResponse.json({ error: "Failed to create client." }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/clients
+ * Body: { clientId, name?, email?, monthlyFee? }
+ *
+ * Edit an existing client's details.
+ * Requires edit_client permission.
+ */
+export async function PUT(req: Request) {
+  const csrfErr = validateCsrf(req);
+  if (csrfErr) return csrfErr;
+
+  const auth = await requireUser();
+  if (auth.error) return auth.error;
+
+  if (!can(auth.user, "edit_client")) {
+    return NextResponse.json(
+      { error: "Forbidden", code: "PERMISSION_DENIED", required: "edit_client" },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const parsed = updateClientSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const { clientId, name, email, monthlyFee } = parsed.data;
+
+    const client = await prisma.client.findUnique({ where: { id: clientId } });
+    if (!client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+    if (client.deletedAt) {
+      return NextResponse.json({ error: "Cannot edit an archived client" }, { status: 409 });
+    }
+
+    // Check email uniqueness if changing email
+    if (email !== undefined && email !== client.email) {
+      if (email) {
+        const existing = await prisma.client.findUnique({ where: { email } });
+        if (existing && existing.id !== clientId) {
+          return NextResponse.json({ error: "Client email already exists" }, { status: 409 });
+        }
+      }
+    }
+
+    const updateData: { name?: string; email?: string | null; monthlyFee?: number } = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (monthlyFee !== undefined) updateData.monthlyFee = monthlyFee;
+
+    const updated = await prisma.client.update({
+      where: { id: clientId },
+      data: updateData,
+      select: { id: true, name: true, email: true, monthlyFee: true, updatedAt: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: auth.user.id,
+        entityType: "Client",
+        entityId: clientId,
+        action: "CLIENT_UPDATED",
+        meta: {
+          actorUserId: auth.user.id,
+          actorRole: auth.user.role,
+          changes: updateData,
+          previousName: client.name,
+          previousEmail: client.email,
+          previousMonthlyFee: client.monthlyFee,
+        },
+      },
+    });
+
+    logger.info("[clients:PUT] client updated", { clientId, actorId: auth.user.id });
+    return NextResponse.json({ ok: true, client: updated }, { status: 200 });
+  } catch (err) {
+    logger.error("[clients:PUT]", err);
+    return NextResponse.json({ error: "Failed to update client." }, { status: 500 });
   }
 }
 

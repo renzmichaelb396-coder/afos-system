@@ -41,8 +41,57 @@ export async function GET(req: Request) {
 
   try {
     const period = await getOrCreatePeriod(year, month);
+
+    // Fetch all active clients with their payment status for this period
+    const clients = await prisma.client.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        monthlyFee: true,
+        monthlyStatuses: {
+          where: { billingPeriodId: period.id },
+          select: { status: true },
+        },
+      },
+    });
+
+    const clientSummary = clients.map((c) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      monthlyFee: c.monthlyFee,
+      status: (c.monthlyStatuses[0]?.status ?? "UNPAID") as "PAID" | "UNPAID",
+    }));
+
+    const paidCount   = clientSummary.filter((c) => c.status === "PAID").length;
+    const unpaidCount = clientSummary.filter((c) => c.status === "UNPAID").length;
+    const totalRevenue = clientSummary
+      .filter((c) => c.status === "PAID")
+      .reduce((sum, c) => sum + c.monthlyFee, 0);
+    const expectedRevenue = clientSummary.reduce((sum, c) => sum + c.monthlyFee, 0);
+
     return NextResponse.json(
-      { ok: true, periodId: period.id, year, month, isClosed: period.isClosed },
+      {
+        ok: true,
+        periodId: period.id,
+        year,
+        month,
+        isClosed: period.isClosed,
+        closedAt: period.closedAt ?? null,
+        closedById: period.closedById ?? null,
+        clients: clientSummary,
+        summary: {
+          total: clients.length,
+          paid: paidCount,
+          unpaid: unpaidCount,
+          totalRevenue,
+          expectedRevenue,
+          collectionRate: clients.length > 0 ? Math.round((paidCount / clients.length) * 100) : 0,
+        },
+      },
       { status: 200 }
     );
   } catch (err: unknown) {

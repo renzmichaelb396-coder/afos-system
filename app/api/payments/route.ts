@@ -93,11 +93,13 @@ export async function POST(req: Request) {
 
       await tx.auditLog.create({
         data: {
+          userId: auth.user.id,
           entityType: "Payment",
           entityId: payment.id,
-          action: "CREATE",
+          action: "PAYMENT_RECORDED",
           meta: {
             actorUserId: auth.user.id,
+            actorRole: auth.user.role,
             clientId,
             billingPeriodId: period.id,
             year,

@@ -5,6 +5,23 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
+type ClientSummaryRow = {
+  id: string;
+  name: string;
+  email?: string | null;
+  monthlyFee: number;
+  status: "PAID" | "UNPAID";
+};
+
+type BillingSummary = {
+  total: number;
+  paid: number;
+  unpaid: number;
+  totalRevenue: number;
+  expectedRevenue: number;
+  collectionRate: number;
+};
+
 type BillingResponse = {
   year: number;
   month: number;
@@ -12,6 +29,8 @@ type BillingResponse = {
   isClosed?: boolean;
   closedAt?: string | null;
   closedById?: string | null;
+  clients?: ClientSummaryRow[];
+  summary?: BillingSummary;
 };
 
 /* ─── Constants ──────────────────────────────────────────────────── */
@@ -21,7 +40,7 @@ const MONTH_NAMES = [
 ];
 function monthLabel(m: number) { return MONTH_NAMES[m - 1] ?? `Month ${m}`; }
 
-/* ─── Sidebar (identical to all other pages) ─────────────────────── */
+/* ─── Sidebar ─────────────────────────────────────────────────────── */
 function Sidebar() {
   const pathname = usePathname();
 
@@ -88,30 +107,23 @@ function Sidebar() {
         <p className="sidebar-section-label" style={{ marginTop: 0 }}>Main</p>
         {mainLinks.map((link) => (
           <Link key={link.href} href={link.href} className={`nav-item ${pathname === link.href ? "nav-item-active" : ""}`}>
-            {link.icon}
-            {link.label}
+            {link.icon}{link.label}
           </Link>
         ))}
         <p className="sidebar-section-label">Admin</p>
         {adminLinks.map((link) => (
           <Link key={link.href} href={link.href} className={`nav-item ${pathname === link.href ? "nav-item-active" : ""}`}>
-            {link.icon}
-            {link.label}
+            {link.icon}{link.label}
           </Link>
         ))}
       </nav>
       <div className="sidebar-footer">
         <button
-          onClick={async () => {
-            await fetch("/api/auth/logout", { method: "POST" });
-            window.location.href = "/login";
-          }}
+          onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }}
           className="nav-item"
           style={{ width: "100%", cursor: "pointer", background: "none", border: "none" }}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-          </svg>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
           Sign out
         </button>
       </div>
@@ -128,6 +140,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
   const [err, setErr]       = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
 
   const years = useMemo(() => {
     const y = new Date().getFullYear();
@@ -137,10 +150,13 @@ export default function BillingPage() {
   async function load(y: number, m: number) {
     setErr(null);
     setLoading(true);
-    const res  = await fetch(`/api/billing?year=${y}&month=${m}`);
-    const json = (await res.json()) as BillingResponse;
-    setData(json);
-    setLoading(false);
+    try {
+      const res  = await fetch(`/api/billing?year=${y}&month=${m}`);
+      const json = (await res.json()) as BillingResponse;
+      setData(json);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function closePeriod() {
@@ -169,6 +185,12 @@ export default function BillingPage() {
   useEffect(() => { load(year, month); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isClosed = Boolean(data?.isClosed);
+  const clients  = data?.clients ?? [];
+  const summary  = data?.summary;
+
+  const filteredClients = statusFilter === "ALL"
+    ? clients
+    : clients.filter((c) => c.status === statusFilter);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -188,12 +210,23 @@ export default function BillingPage() {
             <div>
               <h1 className="page-title">Billing Period</h1>
               <p className="page-subtitle">
-                Manage billing period status for{" "}
+                Payment status for{" "}
                 <strong style={{ color: "var(--text-primary)" }}>{monthLabel(month)} {year}</strong>
+                {isClosed && <span className="badge badge-gray" style={{ marginLeft: "0.5rem" }}>Closed</span>}
               </p>
             </div>
-            {/* Period selector */}
-            <div style={{ alignItems: "center", display: "flex", gap: "0.75rem" }}>
+            {/* Controls */}
+            <div style={{ alignItems: "center", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              <button
+                onClick={() => window.open(`/api/export/clients?year=${year}&month=${month}`, "_blank")}
+                className="btn btn-secondary btn-sm"
+                title="Export billing summary to CSV"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Export CSV
+              </button>
               <select
                 value={year}
                 onChange={(e) => { const y = Number(e.target.value); setYear(y); load(y, month); }}
@@ -233,102 +266,186 @@ export default function BillingPage() {
               <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>Loading billing period…</span>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: "1.5rem", gridTemplateColumns: "minmax(0,1fr) 280px" }}>
+            <>
+              {/* KPI Summary Strip */}
+              {summary && (
+                <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(4, 1fr)", marginBottom: "1.5rem" }}>
+                  {[
+                    { label: "Total Clients",    value: summary.total,                              color: "var(--text-primary)" },
+                    { label: "Paid",             value: summary.paid,                               color: "var(--success)" },
+                    { label: "Unpaid",           value: summary.unpaid,                             color: "var(--warning)" },
+                    { label: "Revenue Collected",value: `₱${summary.totalRevenue.toLocaleString()}`, color: "var(--accent)" },
+                  ].map((s) => (
+                    <div key={s.label} className="stat-card">
+                      <p className="stat-label">{s.label}</p>
+                      <p className="stat-value" style={{ color: s.color }}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Status card */}
-              <div className="card">
-                <div style={{ alignItems: "flex-start", display: "flex", justifyContent: "space-between", gap: "1rem", marginBottom: "1.5rem" }}>
-                  <div>
-                    <h2 style={{ color: "var(--text-primary)", fontSize: "1rem", fontWeight: 600 }}>
-                      {monthLabel(month)} {year}
-                    </h2>
-                    <p style={{ color: "var(--text-muted)", fontSize: "0.8125rem", marginTop: "0.25rem" }}>Billing period details</p>
+              <div style={{ display: "grid", gap: "1.5rem", gridTemplateColumns: "minmax(0,1fr) 280px" }}>
+
+                {/* Client payment status table */}
+                <div>
+                  {/* Filter tabs */}
+                  <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                    {(["ALL", "PAID", "UNPAID"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setStatusFilter(f)}
+                        className={`btn btn-sm ${statusFilter === f ? "btn-primary" : "btn-secondary"}`}
+                      >
+                        {f === "ALL" ? `All (${clients.length})` : f === "PAID" ? `Paid (${summary?.paid ?? 0})` : `Unpaid (${summary?.unpaid ?? 0})`}
+                      </button>
+                    ))}
                   </div>
-                  <span className={`badge ${isClosed ? "badge-gray" : "badge-green"}`}>
-                    {isClosed ? "Closed" : "Open"}
-                  </span>
+
+                  <div className="tbl-wrap">
+                    {filteredClients.length === 0 ? (
+                      <div className="empty-state">
+                        <p className="empty-title">No clients</p>
+                        <p className="empty-sub">No active clients found for this period.</p>
+                      </div>
+                    ) : (
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Client Name</th>
+                            <th>Email</th>
+                            <th>Monthly Fee</th>
+                            <th>Payment Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredClients.map((c, i) => (
+                            <tr key={c.id}>
+                              <td style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums", width: "2.5rem" }}>{i + 1}</td>
+                              <td>
+                                <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{c.name}</span>
+                              </td>
+                              <td style={{ color: "var(--text-muted)" }}>{c.email ?? "—"}</td>
+                              <td style={{ fontVariantNumeric: "tabular-nums" }}>₱{c.monthlyFee.toLocaleString()}</td>
+                              <td>
+                                {c.status === "PAID"
+                                  ? <span className="badge badge-green">Paid</span>
+                                  : <span className="badge badge-amber">Unpaid</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {summary && (
+                      <div className="tbl-footer" style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{filteredClients.length} client{filteredClients.length !== 1 ? "s" : ""} shown</span>
+                        <span style={{ color: "var(--success)", fontWeight: 700 }}>
+                          Collected: ₱{summary.totalRevenue.toLocaleString()} / ₱{summary.expectedRevenue.toLocaleString()} ({summary.collectionRate}%)
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div style={{ borderTop: "1px solid var(--border)" }}>
-                  <div style={{ alignItems: "center", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Period</span>
-                    <span style={{ color: "var(--text-primary)", fontSize: "0.8125rem", fontWeight: 500 }}>{monthLabel(month)} {year}</span>
-                  </div>
-                  <div style={{ alignItems: "center", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Status</span>
-                    <span style={{ color: isClosed ? "var(--text-secondary)" : "var(--success)", fontSize: "0.8125rem", fontWeight: 600 }}>
-                      {isClosed ? "CLOSED" : "OPEN"}
-                    </span>
-                  </div>
-                  {isClosed && data?.closedAt && (
-                    <div style={{ alignItems: "center", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Closed At</span>
-                      <span style={{ color: "var(--text-secondary)", fontSize: "0.8125rem" }}>
-                        {new Date(data.closedAt).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {/* Right sidebar: period controls */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                  {/* Status card */}
+                  <div className="card">
+                    <div style={{ alignItems: "flex-start", display: "flex", justifyContent: "space-between", gap: "1rem", marginBottom: "1.5rem" }}>
+                      <div>
+                        <h2 style={{ color: "var(--text-primary)", fontSize: "1rem", fontWeight: 600 }}>
+                          {monthLabel(month)} {year}
+                        </h2>
+                        <p style={{ color: "var(--text-muted)", fontSize: "0.8125rem", marginTop: "0.25rem" }}>Billing period details</p>
+                      </div>
+                      <span className={`badge ${isClosed ? "badge-gray" : "badge-green"}`}>
+                        {isClosed ? "Closed" : "Open"}
                       </span>
                     </div>
-                  )}
-                  {data?.periodId && (
-                    <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Period ID</span>
-                      <span style={{ color: "var(--text-muted)", fontFamily: "monospace", fontSize: "0.75rem" }}>{data.periodId}</span>
+
+                    <div style={{ borderTop: "1px solid var(--border)" }}>
+                      <div style={{ alignItems: "center", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Period</span>
+                        <span style={{ color: "var(--text-primary)", fontSize: "0.8125rem", fontWeight: 500 }}>{monthLabel(month)} {year}</span>
+                      </div>
+                      <div style={{ alignItems: "center", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Status</span>
+                        <span style={{ color: isClosed ? "var(--text-secondary)" : "var(--success)", fontSize: "0.8125rem", fontWeight: 600 }}>
+                          {isClosed ? "CLOSED" : "OPEN"}
+                        </span>
+                      </div>
+                      {isClosed && data?.closedAt && (
+                        <div style={{ alignItems: "center", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
+                          <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Closed At</span>
+                          <span style={{ color: "var(--text-secondary)", fontSize: "0.8125rem" }}>
+                            {new Date(data.closedAt).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                      )}
+                      {data?.periodId && (
+                        <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", padding: "0.875rem 0" }}>
+                          <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>Period ID</span>
+                          <span style={{ color: "var(--text-muted)", fontFamily: "monospace", fontSize: "0.75rem" }}>{data.periodId}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div style={{ borderTop: "1px solid var(--border)", marginTop: "1.25rem", paddingTop: "1.25rem" }}>
-                  <button
-                    onClick={closePeriod}
-                    disabled={isClosed || closing}
-                    className={`btn ${isClosed ? "btn-secondary" : "btn-danger"}`}
-                    title={isClosed ? "Already closed" : "Close this billing period (ADMIN only)"}
-                  >
-                    {closing ? (
-                      <><div className="spinner-sm" /> Closing…</>
-                    ) : isClosed ? (
-                      <>
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                        </svg>
-                        Period Closed
-                      </>
-                    ) : (
-                      <>
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                        Close Billing Period
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+                    <div style={{ borderTop: "1px solid var(--border)", marginTop: "1.25rem", paddingTop: "1.25rem" }}>
+                      <button
+                        onClick={closePeriod}
+                        disabled={isClosed || closing}
+                        className={`btn ${isClosed ? "btn-secondary" : "btn-danger"}`}
+                        title={isClosed ? "Already closed" : "Close this billing period (ADMIN only)"}
+                      >
+                        {closing ? (
+                          <><div className="spinner-sm" /> Closing…</>
+                        ) : isClosed ? (
+                          <>
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                            Period Closed
+                          </>
+                        ) : (
+                          <>
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                            </svg>
+                            Close Billing Period
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Info sidebar */}
-              <div className="card" style={{ alignSelf: "flex-start" }}>
-                <div className="card-header">
-                  <svg className="h-4 w-4" style={{ color: "var(--info)" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-                  </svg>
-                  About Billing Periods
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6 }}>
-                    A billing period tracks payment status for all clients within a given month.
-                  </p>
-                  <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6 }}>
-                    Closing a period <strong>locks</strong> all payments for that month. No new payments can be recorded after closing.
-                  </p>
-                  <div className="alert alert-info" style={{ marginTop: "0.25rem" }}>
-                    <svg className="h-4 w-4 shrink-0" style={{ marginTop: "0.125rem" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-                    </svg>
-                    <span>Only ADMIN accounts can close a billing period.</span>
+                  {/* Info card */}
+                  <div className="card" style={{ alignSelf: "flex-start" }}>
+                    <div className="card-header">
+                      <svg className="h-4 w-4" style={{ color: "var(--info)" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                      </svg>
+                      About Billing Periods
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                      <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                        A billing period tracks payment status for all clients within a given month.
+                      </p>
+                      <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                        Closing a period <strong>locks</strong> all payments for that month. No new payments can be recorded after closing.
+                      </p>
+                      <div className="alert alert-info" style={{ marginTop: "0.25rem" }}>
+                        <svg className="h-4 w-4 shrink-0" style={{ marginTop: "0.125rem" }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                        </svg>
+                        <span>Only ADMIN accounts can close a billing period.</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

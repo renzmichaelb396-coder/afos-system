@@ -97,6 +97,14 @@ export default function ClientsPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
 
+  // Edit modal state
+  const [editClient, setEditClient] = useState<ClientRow | null>(null);
+  const [editName, setEditName]     = useState("");
+  const [editEmail, setEditEmail]   = useState("");
+  const [editFee, setEditFee]       = useState("");
+  const [editErr, setEditErr]       = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
   const years = useMemo(() => {
     const y = new Date().getFullYear();
     return [y - 1, y, y + 1];
@@ -151,6 +159,46 @@ export default function ClientsPage() {
       loadClients(year, month);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openEditModal(c: ClientRow) {
+    setEditClient(c);
+    setEditName(c.name);
+    setEditEmail(c.email ?? "");
+    setEditFee(String(c.monthlyFee));
+    setEditErr(null);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editClient) return;
+    setEditErr(null);
+    if (!editName.trim()) { setEditErr("Client name is required."); return; }
+    if (!editFee || Number(editFee) <= 0) { setEditErr("Monthly fee must be greater than 0."); return; }
+    setEditSaving(true);
+    try {
+      const res = await fetch("/api/clients", {
+        credentials: "include",
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: editClient.id,
+          name: editName.trim(),
+          email: editEmail.trim() || null,
+          monthlyFee: Number(editFee),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setEditErr(d?.error || "Failed to update client.");
+        return;
+      }
+      setEditClient(null);
+      showToast("Client updated successfully.", "success");
+      loadClients(year, month);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -242,11 +290,81 @@ export default function ClientsPage() {
   const unpaid  = activeClients.filter((c) => c.status === "UNPAID").length;
   const totalRevenue = activeClients.filter((c) => c.status === "PAID").reduce((s, c) => s + c.monthlyFee, 0);
 
+  // Permissions derived from role
+  const canEdit = userRole === "ADMIN" || userRole === "MANAGER" || userRole === "ACCOUNTANT";
+
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div className="page-body">
+
+          {/* Edit Client Modal */}
+          {editClient && (
+            <div
+              style={{
+                position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                zIndex: 100,
+              }}
+              onClick={(e) => { if (e.target === e.currentTarget) setEditClient(null); }}
+            >
+              <div className="card" style={{ width: "100%", maxWidth: "480px", margin: "1rem" }}>
+                <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+                  <h2 style={{ color: "var(--text-primary)", fontSize: "1rem", fontWeight: 600 }}>Edit Client</h2>
+                  <button onClick={() => setEditClient(null)} className="btn btn-secondary btn-sm">✕</button>
+                </div>
+                <form onSubmit={saveEdit} style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+                  <div className="form-group">
+                    <label className="form-label">Client Name <span style={{ color: "var(--danger)" }}>*</span></label>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                      className="form-input"
+                      placeholder="e.g. Acme Corporation"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Email (optional)</label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="form-input"
+                      placeholder="client@example.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Monthly Fee (₱) <span style={{ color: "var(--danger)" }}>*</span></label>
+                    <input
+                      type="number"
+                      value={editFee}
+                      onChange={(e) => setEditFee(e.target.value)}
+                      required
+                      min="1"
+                      step="1"
+                      className="form-input"
+                    />
+                  </div>
+                  {editErr && (
+                    <div className="alert alert-error">
+                      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                      </svg>
+                      <span>{editErr}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.25rem" }}>
+                    <button type="button" onClick={() => setEditClient(null)} className="btn btn-secondary">Cancel</button>
+                    <button type="submit" disabled={editSaving} className="btn btn-primary">
+                      {editSaving ? "Saving…" : "Save Changes"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Toast */}
           {toast && (
@@ -322,39 +440,41 @@ export default function ClientsPage() {
           </div>
 
           {/* Add client form */}
-          <div className="card" style={{ marginBottom: "1.5rem" }}>
-            <h2 style={{ color: "var(--text-primary)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "1rem" }}>
-              Add New Client
-            </h2>
-            <form onSubmit={createClient} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "0.75rem" }}>
-              <div className="form-group" style={{ flex: "1 1 180px", minWidth: "180px" }}>
-                <label className="form-label">Client Name <span style={{ color: "var(--danger)" }}>*</span></label>
-                <input placeholder="e.g. Acme Corporation" value={name} onChange={(e) => setName(e.target.value)} required className="form-input" />
-              </div>
-              <div className="form-group" style={{ flex: "1 1 180px", minWidth: "180px" }}>
-                <label className="form-label">Email (optional)</label>
-                <input placeholder="client@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="form-input" />
-              </div>
-              <div className="form-group" style={{ width: "9rem" }}>
-                <label className="form-label">Monthly Fee (₱) <span style={{ color: "var(--danger)" }}>*</span></label>
-                <input placeholder="5000" type="number" value={monthlyFee} onChange={(e) => setMonthlyFee(e.target.value)} required min="0" step="0.01" className="form-input" />
-              </div>
-              <button type="submit" disabled={submitting} className="btn btn-primary">
-                {submitting ? <><span className="spinner-sm" /> Adding…</> : <>
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                  Add Client
-                </>}
-              </button>
-            </form>
-            {formErr && (
-              <div className="alert alert-error" style={{ marginTop: "0.75rem" }}>
-                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                </svg>
-                <span>{formErr}</span>
-              </div>
-            )}
-          </div>
+          {canEdit && (
+            <div className="card" style={{ marginBottom: "1.5rem" }}>
+              <h2 style={{ color: "var(--text-primary)", fontSize: "0.875rem", fontWeight: 600, marginBottom: "1rem" }}>
+                Add New Client
+              </h2>
+              <form onSubmit={createClient} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "0.75rem" }}>
+                <div className="form-group" style={{ flex: "1 1 180px", minWidth: "180px" }}>
+                  <label className="form-label">Client Name <span style={{ color: "var(--danger)" }}>*</span></label>
+                  <input placeholder="e.g. Acme Corporation" value={name} onChange={(e) => setName(e.target.value)} required className="form-input" />
+                </div>
+                <div className="form-group" style={{ flex: "1 1 180px", minWidth: "180px" }}>
+                  <label className="form-label">Email (optional)</label>
+                  <input placeholder="client@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="form-input" />
+                </div>
+                <div className="form-group" style={{ width: "9rem" }}>
+                  <label className="form-label">Monthly Fee (₱) <span style={{ color: "var(--danger)" }}>*</span></label>
+                  <input placeholder="5000" type="number" value={monthlyFee} onChange={(e) => setMonthlyFee(e.target.value)} required min="0" step="0.01" className="form-input" />
+                </div>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? <><span className="spinner-sm" /> Adding…</> : <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                    Add Client
+                  </>}
+                </button>
+              </form>
+              {formErr && (
+                <div className="alert alert-error" style={{ marginTop: "0.75rem" }}>
+                  <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  <span>{formErr}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Clients table */}
           {loading ? (
@@ -405,14 +525,21 @@ export default function ClientsPage() {
                       <td>
                         <div style={{ alignItems: "center", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                           <Link href="/dashboard/payments" className="btn btn-secondary btn-sm">Payments</Link>
+                          {canEdit && (
+                            <button onClick={() => openEditModal(c)} className="btn btn-secondary btn-sm" title="Edit client">
+                              Edit
+                            </button>
+                          )}
                           {c.status === "UNPAID" && (
                             <button onClick={() => recordPayment(c.id, c.monthlyFee, c.name)} className="btn btn-success btn-sm">
                               Record Payment
                             </button>
                           )}
-                          <button onClick={() => softDeleteClient(c.id, c.name)} className="btn btn-danger btn-sm" title="Archive client">
-                            Archive
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => softDeleteClient(c.id, c.name)} className="btn btn-danger btn-sm" title="Archive client">
+                              Archive
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
