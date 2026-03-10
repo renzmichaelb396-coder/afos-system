@@ -10,15 +10,29 @@ import { billingQuerySchema, closePeriodSchema } from "@/lib/schemas/billing";
 import { logger } from "@/lib/logger";
 
 async function getOrCreatePeriod(year: number, month: number) {
-  let period = await prisma.billingPeriod.findUnique({
+  const existing = await prisma.billingPeriod.findUnique({
     where: { year_month: { year, month } },
   });
 
-  if (!period) {
-    period = await prisma.billingPeriod.create({ data: { year, month } });
-  }
+  if (existing) return existing;
 
-  return period;
+  try {
+    return await prisma.billingPeriod.create({ data: { year, month } });
+  } catch (err) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : undefined;
+
+    if (code === "P2002") {
+      const retry = await prisma.billingPeriod.findUnique({
+        where: { year_month: { year, month } },
+      });
+      if (retry) return retry;
+    }
+
+    throw err;
+  }
 }
 
 export async function GET(req: Request) {
